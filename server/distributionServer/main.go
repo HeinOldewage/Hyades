@@ -44,7 +44,7 @@ func main() {
 	if err != nil {
 		log.Println(err)
 	}
-	ts := TaurusServer{ListenAddress: ":8080", DBhandle: db}
+	ts := TaurusServer{ListenAddress: ":8085", DBhandle: db}
 	ts.Listen()
 
 }

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<!--background="Images/CNLOGO.jpg"-->
+	<HEAD>
+		<TITLE>Concordis</TITLE>
+			<link rel="stylesheet" type="text/css" href="main.css" />
+			<link rel="icon" type="image/x-icon" href="favicon.ico" />
+			<link rel="shortcut icon" type="image/x-icon" href="favicon.ico" />
+			
+			<script src="/JQuery/jquery-1.11.0.min.js"></script>
+			<script src="DragAndDrop.js"></script>
+			
+			<script>
+			var Envr = null
+			var win = null
+			var lin = null
+			var descr = null
+			
+			var envRegex =/\.zip/i ;
+			var descrRegex =/.json/i;
+			
+			DragSave("ALLTHETHINGS",function (file,outof) {
+				if (outof >= 2) {
+					if (envRegex.test(file.name)){
+						drop   = document.getElementById("X1");
+						drop.innerHTML = file.name; 
+						Envr = file	;
+					}
+					if (descrRegex.test(file.name)){
+						drop   = document.getElementById("X2");
+						drop.innerHTML = file.name; 
+						descr = file	;
+					}
+				}
+			});
+			
+			function tryCreateJob() {
+				alert("Button was clicked");
+			}
+												
+			</script>	
+			
+ 
+      
+      
+		</HEAD >
+		
+		<body  style="background-image:url('Images/Background.jpg');background-size:100% 100%;background-repeat:no-repeat;background-size:cover;background-attachment:fixed;">
+		
+			<div id="ALLTHETHINGS" class="outer" >
+				<div class="middle">
+					
+					<div class="inner" style="width: 380px;background-color:#4F4B47;">
+						<table border="0"  cellpadding="3" id="table2" width="380" class="transbox1">
+							<tr>
+								<td width="30%" height="5" align="right"/>
+								<td height="5" width="35%" align="right"/>
+							</tr>
+							<tr>
+								<td width="30%" height="16" align="right">
+								<b><font face="Arial" size="2">Env&nbsp;</font></b></td>
+								<td height="16" width="35%" align="right">
+								<div id="X1" style="min-height: 22px;width:270px" class="inputStyle"  title="A .zip file containing executables and files neccecary for clients to run" ></div></td>
+							</tr>
+							<tr>
+								<td width="30%" height="16" align="right"><b>
+								<font face="Arial" size="2">Config&nbsp;</font></b></td>
+								<td height="16" width="35%" align="right">
+								<div id="X2" style="min-height: 22px;width:270px" class="inputStyle"  title="Description of a work unit, must be valid file name" ></div></td>
+							</tr>
+				
+
+							<tr>
+								<td width="30%"></td>
+								<td width="22%" align="center">
+								<input id="Log_It" type="button" class="inputButton" style="width:40%"  value="Submit" name="Submit" onclick="tryCreateJob() ">
+								</td>
+								<td width="30%"></td>
+							</tr>
+							<tr>
+								<td width="30%" height="5" align="right"/>
+								<td height="5" width="35%" align="right"/>
+							</tr>
+						
+						</table>
+					
+					
+					</div> <!--inner-->
+				</div><!--middle-->
+			</div><!--outer-->
+		</body>
+		
+</html>
+								
