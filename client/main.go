@@ -18,7 +18,9 @@ func (tc *TaurusClient) Connect() (err error) {
 
 func main() {
 	fmt.Println("This is the taurus client")
+
 	tc := TaurusClient{ServerAddress: "127.0.0.1:8085"}
+
 	err := tc.Connect()
 	if err != nil {
 		log.Println(err)

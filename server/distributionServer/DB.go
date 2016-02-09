@@ -34,13 +34,19 @@ func NewDB() (*DB, error) {
 }
 
 func (db *DB) GetNextJob() *Job {
+<<<<<<< HEAD
 	query := []bson.M{{"$group": bson.M{"_id": nil, "count": bson.M{"$sum": "1"}}}}
 	iterator := db.session.DB("Jobs").C("Users").Pipe(query).Iter()
+=======
+	query := []bson.M{{"$group": bson.M{"_id": bson.M{"PartOf.Owner": nil}, "count": bson.M{"$sum": 1}}}}
+	iterator := db.session.DB("Jobs").C("Jobs").Pipe(query).Iter()
+>>>>>>> 26efeafe3e9d17644a4c4816b1bc2652426098c8
 	var res map[string]interface{} = make(map[string]interface{})
 
 	for iterator.Next(res) {
 		log.Println(res)
 	}
+<<<<<<< HEAD
 	log.Println(iterator.Err())
 	return nil
 }
@@ -58,3 +64,7 @@ func init() {
 
 	session.DB("Jobs").C("Users").Insert(user)
 }
+=======
+	return nil
+}
+>>>>>>> 26efeafe3e9d17644a4c4816b1bc2652426098c8

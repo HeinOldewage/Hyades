@@ -45,6 +45,7 @@ func main() {
 		log.Println(err)
 	}
 	ts := TaurusServer{ListenAddress: ":8085", DBhandle: db}
+
 	ts.Listen()
 
 }
