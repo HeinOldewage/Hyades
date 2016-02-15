@@ -14,11 +14,15 @@ type User struct {
 }
 
 type Work struct {
+	//Environment file saved on the server
+	Env  string
 	Jobs []Job
 }
 
 type Job struct {
-	Command string
+	Command         string
+	SaveEnvironment bool
+	Done            bool
 }
 
 type DB struct {
@@ -33,22 +37,31 @@ func NewDB() (*DB, error) {
 	return &DB{session}, nil
 }
 
-func (db *DB) GetNextJob() *Job {
-<<<<<<< HEAD
-	query := []bson.M{{"$group": bson.M{"_id": nil, "count": bson.M{"$sum": "1"}}}}
-	iterator := db.session.DB("Jobs").C("Users").Pipe(query).Iter()
-=======
-	query := []bson.M{{"$group": bson.M{"_id": bson.M{"PartOf.Owner": nil}, "count": bson.M{"$sum": 1}}}}
-	iterator := db.session.DB("Jobs").C("Jobs").Pipe(query).Iter()
->>>>>>> 26efeafe3e9d17644a4c4816b1bc2652426098c8
-	var res map[string]interface{} = make(map[string]interface{})
+func (db *DB) GetNextJob() *RunnableJob {
 
-	for iterator.Next(res) {
+	//query := []bson.M{{"$unwind": "$works"}, {"$unwind": "$works.jobs"}, {"$group": bson.M{"_id": bson.M{"name": "$name"}, "sumation": bson.M{"$sum": 1}}}}
+	query := []bson.M{{"$unwind": "$works"}, {"$unwind": "$works.jobs"}, {"$match": bson.M{"works.jobs.done": bson.M{"$eq": false}}}}
+	iterator := db.session.DB("Jobs").C("Jobs").Pipe(query).Iter()
+
+	//var res map[string]interface{} = make(map[string]interface{})
+	var res RunnableJob
+	for iterator.Next(&res) {
+
 		log.Println(res)
+		return &res
 	}
-<<<<<<< HEAD
-	log.Println(iterator.Err())
+	log.Println("Err:", iterator.Err())
 	return nil
+}
+
+type RunnableJob struct {
+	Name     string
+	Password []byte
+
+	Works struct {
+		Env  string
+		Jobs Job
+	}
 }
 
 func init() {
@@ -56,15 +69,25 @@ func init() {
 	if err != nil {
 		return
 	}
+	session.DB("Jobs").C("Jobs").DropCollection()
+
 	user := &User{Name: "Test"}
 	user.Works = make([]Work, 1)
 	user.Works[0].Jobs = make([]Job, 2)
 	user.Works[0].Jobs[0].Command = "First command"
-	user.Works[0].Jobs[0].Command = "Second command"
+	user.Works[0].Jobs[0].Done = true
+	user.Works[0].Jobs[1].Command = "Second command"
+	user.Works[0].Jobs[1].Done = false
 
-	session.DB("Jobs").C("Users").Insert(user)
+	log.Println("Insert Error:", session.DB("Jobs").C("Jobs").Insert(user))
+
+	iterator := session.DB("Jobs").C("Jobs").Find(nil).Iter()
+
+	var res map[string]interface{} = make(map[string]interface{})
+	//var res User
+
+	for iterator.Next(&res) {
+		log.Println(res)
+	}
+	log.Println("Err:", iterator.Err())
 }
-=======
-	return nil
-}
->>>>>>> 26efeafe3e9d17644a4c4816b1bc2652426098c8
