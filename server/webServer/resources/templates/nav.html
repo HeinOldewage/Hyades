@@ -1,0 +1,10 @@
+<div class="nav">
+      <ul>
+        <li class="createJob"><a {{if eq currentTab "createJob" }} class="active" {{end}} href="/CreateJob">New Job</a></li>
+        <li class="listJobs"><a {{if eq currentTab  "listJobs" }} class="active" {{end}} href="/Jobs">View Jobs</a></li>
+        <li class="help"><a {{if eq currentTab  "help" }} class="active" {{end}}} href="/Help">Help</a></li>
+        <li class="about"><a {{if eq currentTab  "about" }} class="active" {{end}} href="/About">About</a></li>
+        {{if .Admin}} <li class="admin"><a  {{if eq currentTab  "admin" }} class="active" {{end}} href="/Admin">Admin</a></li> {{end}}
+        <li class="logout"><a href="/Logout">Logout</a></li>
+      </ul>
+    </div>

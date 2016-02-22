@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<!--background="Images/CNLOGO.jpg"-->
+	<HEAD>
+		<TITLE>Concordis</TITLE>
+		<link rel="stylesheet" type="text/css" href="mainforhein.css" />
+		<link rel="icon" type="image/x-icon" href="favicon.ico" />
+		<link rel="shortcut icon" type="image/x-icon" href="favicon.ico" />
+		
+		<script src="/JQuery/jquery-1.11.0.min.js"></script>
+		<script type="text/javascript" >
+		var gotoURL = "/CreateJob"
+		function getParameterByName(name) {
+			name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+			var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+				results = regex.exec(location.search);
+			return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+		}
+		
+		 function tryLogin() {
+			 var name = $("[name=smacku]").val()
+			 var passw = $("[name=smackp]").val()
+			 if (getParameterByName("to") != "") {
+					gotoURL = getParameterByName("to")
+				}
+			$.post( "/TryLogin",{Name:name,Password:passw}
+			).done(	function() {
+				$("#loginResult").html ( "<a>Success</a>" );
+				window.location.href =gotoURL ;
+			  
+			  
+			}).fail(function() {
+				$("#loginResult").html ( "Could not log in" );
+			})
+		 }
+		 function tryRegister() {
+			 var name = $("[name=smacku]").val()
+			 var passw = $("[name=smackp]").val()
+			 
+			$.post( "/TryRegister",{Name:name,Password:passw}
+			).done(	function() {
+				$("#loginResult").html ( "<a>Success</a>" );
+				var	to = getParameterByName("to")
+				if (to != "") {
+					window.location.href =to;
+				} else {
+					window.location.href =gotoURL;
+				}
+			  
+			  
+			}).fail(function() {
+				$("#loginResult").html ( "Could not register" );
+			})
+		 }
+		 
+		  function isEnter(event){
+			var x = event.which || event.keyCode;
+			if (x == 13) {
+				tryLogin()
+			}
+		 }
+		</script>
+		
+	</HEAD>
+
+	
+	<body style="background-image:url('Images/something.jpg');background-size:100% 100%;background-repeat:no-repeat;background-size:cover;background-attachment:fixed;" >
+	
+
+	
+		<div id="ALLTHETHINGS" class="outer" >
+			<div class="middle">
+				<div class="inner" style="width: 380px;"  >
+					
+						<div valign="top" class="ConcordisGrey">
+						<span style="font-size: 13pt">Concordis Login</span></b></font>
+						</div>
+			
+						
+
+						<!-- Inner Table, Containing Edit boxes and buttons -->
+						<table border="0"  cellpadding="3" id="table2" width="380" class="transbox1">
+							<tr>
+								<td width="30%" height="5" align="right"/>
+								<td height="5" width="35%" align="right"/>
+							</tr>
+							<tr>
+							<td width="30%" height="16" align="right">
+							<b><font face="Arial" size="2">Username&nbsp;</font></b></td>
+							<td height="16" width="35%" align="right">
+							<input id="X1" class="inputStyle" type="text" name="smacku" size="21"></td>
+							</tr>
+
+							<tr>
+							<td width="30%" height="16" align="right"><b>
+							<font face="Arial" size="2">Password&nbsp;</font></b></td>
+							<td height="16" width="35%" align="right">
+							<p>
+							<input id="X2" class="inputStyle" type="password" name="smackp" size="21" onkeypress="isEnter(event)"></td>
+							</tr>
+
+							<tr>
+							<td width="30%"></td>
+							<td width="22%" align="center">
+							<input id="Log_It" class="inputButton" type="button" style="width:40%"  value="Login" name="login" onclick="tryLogin() ">
+							<input id="Log_It" class="inputButton" type="button" style="width:40%"  value="Register" name="Register" onclick="tryRegister() ">
+							<!--input id="Register_It" class="inputButton" style="width:40%" type="submit" align="right" value="Register" name="register"--></td>
+							<td width="30%"></td>
+							</tr>
+							<tr>
+								<td width="30%" height="5" align="right"/>
+								<td height="5" width="35%" align="right"/>
+							</tr>
+						</table>
+						
+
+					<div id="loginResult">
+
+					</div>
+
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

@@ -1,0 +1,10 @@
+<div class ="ConcordisGrey">
+	<p class="ConcordisTitle"> Jobs </p>
+</div>
+<div class="prettyDiv">
+  <ol class="prettyOl">
+	{{range .}} 
+	{{template "listJob.html" .  }} 						
+	{{end}}
+  </ol> 
+</div>

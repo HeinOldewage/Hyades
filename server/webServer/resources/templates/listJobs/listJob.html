@@ -1,0 +1,8 @@
+<div  class="jobList">
+<li class="prettyLi"><span class="prettySpan"> {{.JobID}} </span><p class="prettyP">
+	<br>
+	<a href="JobStatus?id={{.JobID}}">Job with id {{.JobID}}</a>
+	<br>
+	({{CountDone .JobID}} of {{totalWork .JobID}} complete)
+</p></li>
+</div>

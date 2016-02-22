@@ -1,0 +1,31 @@
+<div id="{{.PartID}}" style="background-color:#ffffff;border-radius: 4px 4px 4px 4px;border: 1px solid #000000;padding:5px">
+	<p>Work Id: {{.PartID}}</p>
+	<p> Command: (Windows) {{.WindowsCommand}} (Linux) {{.LinuxCommand}}</p>
+	<p>Returns Environment?: {{.ReturnEnv}}</p>
+	<p>Work Status:  <span id="status" >{{.Status}}</span></p>
+	<p>Time on Current Client:  <span id="clientTime"  >{{ .RunTime}}</span></p>
+	<p>Total Time on Clients:  <span id="totalTime" >{{ .TotalRunTime}}</span></p>
+	<p>Fail Count: <span id="failCount" >{{ .FailCount}}</span></p>
+</div>
+
+
+<!--
+
+type Work struct {
+	PartOf * Job
+	PartID string
+	Env []byte
+	WindowsCommand string
+	LinuxCommand string
+	ReturnEnv bool
+	Status string
+	Done bool
+}
+
+type Job struct {
+ Owner *Person
+ JobID string
+ Parts [] * Work
+}
+
+-->

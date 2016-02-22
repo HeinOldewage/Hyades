@@ -1,0 +1,47 @@
+<script src='Observer.js'></script>
+<script>
+			function stop() {				
+					$.ajax({
+					url: "/stop?id={{.JobID}}",
+					type: 'Get',
+					async: true,
+					cache: false,
+					contentType: false,
+					processData: false,
+					success: function(){
+						
+					},
+					error: function(err){
+						alert("error in ajax form submission"+err.responseText);
+					}
+				});
+			}
+			function start() {				
+					$.ajax({
+					url: "/start?id={{.JobID}}",
+					type: 'Get',
+					async: true,
+					cache: false,
+					contentType: false,
+					processData: false,
+					success: function(){
+						
+					},
+					error: function(err){
+						alert("error in ajax form submission"+err.responseText);
+					}
+				});
+			}
+
+		Observe('Jobs/Jobs*{{.JobID}}/WorkObservers',function(list) {
+			for (i = 0 ; i < list.length ; i++){
+				event = list[i];
+				div = document.getElementById(event.PartID);
+				$(jq(event.PartID)).find("#status").html(event.Status)
+				$(jq(event.PartID)).find("#clientTime").html(event.RunTime)
+				$(jq(event.PartID)).find("#totalTime").html(event.TotalRunTime)
+				$(jq(event.PartID)).find("#failCount").html(event.FailCount)
+				
+			}
+		});
+</script>

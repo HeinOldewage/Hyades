@@ -1,0 +1,100 @@
+<script>
+			var Envr = null
+			var win = null
+			var lin = null
+			var descr = null
+			
+			var envRegex =/\.zip/i ;
+			var winRegex =/windows.txt/i;
+			var linRegex =/linux.txt/i;
+			var descrRegex =/description.txt/i;
+			
+			DragSave("ALLTHETHINGS",function (file,outof) {
+										if (outof >= 3) {
+											if (envRegex.test(file.name)){
+												drop   = document.getElementById("X1");
+												drop.innerHTML = file.name; 
+												Envr = file	;
+											}
+											if (winRegex.test(file.name)){
+												drop   = document.getElementById("X2");
+												drop.innerHTML = file.name; 
+												win = file;	
+											}
+											if (linRegex.test(file.name)){
+												drop   = document.getElementById("X3");
+												drop.innerHTML = file.name; 
+												lin = file	;
+											}
+											if (descrRegex.test(file.name)){
+												drop   = document.getElementById("X4");
+												drop.innerHTML = file.name; 
+												descr = file	;
+											}
+										}
+									});
+			
+			DragSave("X1",function (result) {
+										drop   = document.getElementById("X1");
+										drop.innerHTML = result.name; 
+										Envr = result	;
+									},
+									"1px solid red");
+			DragSave("X2",function (result) {
+										drop   = document.getElementById("X2");
+										drop.innerHTML = result.name; 
+										win = result;	
+									},
+									"1px solid red");
+			DragSave("X3",function (result) {
+										drop   = document.getElementById("X3");
+										drop.innerHTML = result.name; 
+										lin = result	;
+									},
+									"1px solid red");
+			DragSave("X4",function (result) {
+										drop   = document.getElementById("X4");
+										drop.innerHTML = result.name; 
+										descr = result	;
+									},
+									"1px solid red");
+									
+			
+		 function tryCreateJob() {
+			var checkbox   = document.getElementById("X5").checked;
+			
+			var formData = new FormData();
+			formData.append('Env',Envr,Envr.name);
+			if (win != null ){
+			formData.append('windowsCMD',win,win.name);
+			}
+			if (lin != null) {
+			formData.append('linuxCMD',lin,lin.name);
+			}
+			if (descr != null) {
+				formData.append('workDescr',descr,descr.name);
+			}
+			formData.append('ReturnEnv',checkbox);
+			$.ajax({
+				url: "/submit",
+				type: 'POST',
+				data: formData,
+				async: true,
+				cache: false,
+				contentType: false,
+				processData: false,
+				success: function(){
+						window.location.href = "/Jobs"
+				},
+				error: function(){
+					alert("error in ajax form submission");
+				}
+			});
+			/*.done(	function() {
+				alert("Done");
+			  
+			}).fail(function() {
+				alert("fail");
+			})*/
+		 }
+		</script>

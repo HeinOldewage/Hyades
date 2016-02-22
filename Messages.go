@@ -1,6 +1,6 @@
 package Hyades
 
-type Job struct {
+type Jobqqqq struct {
 	Command         string
 	Env             []byte
 	SaveEnvironment bool
