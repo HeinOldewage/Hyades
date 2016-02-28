@@ -1,12 +1,12 @@
 <div style="background-color:#ffffff;border-radius: 4px 4px 4px 4px;border: 1px solid #000000;">
-						<p>Job number:{{.JobID}}</p>
-						Done:{{CountDone .JobID}}/{{len .Parts}}
+						<p>Job number:{{IDToString .Id}}</p>
+						Done:{{CountDone (IDToString .Id)}}/{{len .Parts}}
 						<button onclick="stop()" >Stop</button>
 						<button onclick="start()" >Start</button>
 						</div>
 						
 						<div style="background-color:#ffffff;border-radius: 4px 4px 4px 4px;border: 1px solid #000000;overflow:hidden;padding:5px">
-						<a href="/GetJobResult?id={{.JobID}}" download="Job{{.JobID}}.zip"><button>Download</button></a>
+						<a href="/GetJobResult?id={{IDToString .Id}}" download="Job{{IDToString .Id}}.zip"><button>Download</button></a>
 						 <br>
 						 <input type="text" style="width:200px;margin:5px"></input>
 						 <button>Download with regexp</button>

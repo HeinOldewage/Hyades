@@ -2,7 +2,7 @@
 <script>
 			function stop() {				
 					$.ajax({
-					url: "/stop?id={{.JobID}}",
+					url: "/stop?id={{.Id}}",
 					type: 'Get',
 					async: true,
 					cache: false,
@@ -18,7 +18,7 @@
 			}
 			function start() {				
 					$.ajax({
-					url: "/start?id={{.JobID}}",
+					url: "/start?id={{.Id}}",
 					type: 'Get',
 					async: true,
 					cache: false,
@@ -33,7 +33,7 @@
 				});
 			}
 
-		Observe('Jobs/Jobs*{{.JobID}}/WorkObservers',function(list) {
+		Observe('Jobs/Jobs*{{.Id}}/WorkObservers',function(list) {
 			for (i = 0 ; i < list.length ; i++){
 				event = list[i];
 				div = document.getElementById(event.PartID);

@@ -11,24 +11,28 @@ import (
  All work is linked to a Job
 */
 type Job struct {
-	Owner        *Person
-	JobID        string
-	Parts        []*Work
-	NumPartsDone int32
+	OwnerID      string  `bson :"omitempty"`
+	Id           string  `json:"id" bson:"_id,omitempty"`
+	Parts        []*Work `bson :"omitempty"`
+	NumPartsDone int32   `bson :"omitempty"`
 
-	Env []byte
+	JobFolder string `bson :"omitempty"`
+	//A friendly name to used in displays
+	Name string
 
-	WorkObservers *ObserverList
+	Env       []byte `bson :"omitempty"`
+	ReturnEnv bool   `bson :"omitempty"`
+
+	WorkObservers *ObserverList `bson :"omitempty"`
 }
 
 func (j *Job) AddWork(w *Work) {
 	j.Parts = append(j.Parts, w)
 }
 
-func NewJob(Owner *Person, JobID string, Parts []*Work, NumPartsDone int32, Env []byte) *Job {
+func NewJob(OwnerID string, JobID string, Parts []*Work, NumPartsDone int32, Env []byte) *Job {
 	res := &Job{
-		Owner:         Owner,
-		JobID:         JobID,
+		OwnerID:       OwnerID,
 		Parts:         Parts,
 		NumPartsDone:  NumPartsDone,
 		Env:           Env,
@@ -42,7 +46,7 @@ A Work struct gives the Environment the Command must be executed and specifies w
 */
 type Work struct {
 	partOf *Job
-	PartID string
+	PartID string `json:"id" bson:"_id,omitempty"`
 
 	DispatchTime        time.Time
 	FinishTime          time.Time
@@ -51,42 +55,41 @@ type Work struct {
 	CompletedBy   *ClientInfo
 	CurrentClient *ClientInfo
 	Done          bool
+	Dispatched    bool
 	failCount     int
 	status        string
 
-	WindowsCommand string
-	LinuxCommand   string
-	ReturnEnv      bool
+	Command string
 }
 
 /*
 A WorkState struct stores additional information about the Work, like its current state, how many times it has failed, etc
 */
 type WorkComms struct {
-	Env            []byte
-	WindowsCommand string
-	LinuxCommand   string
-	ReturnEnv      bool
-	PartID         string
-}
-
-func NewWork(partOf *Job, partId string, windowsCmd, linuxCmd string, returnEnv bool) *Work {
-	return &Work{
-		partOf:         partOf,
-		PartID:         partId,
-		WindowsCommand: windowsCmd,
-		LinuxCommand:   linuxCmd,
-		ReturnEnv:      returnEnv,
-		failCount:      0,
-		Done:           false,
-		status:         "",
+	Env       []byte
+	ReturnEnv bool
+	Parts     struct {
+		Command string
 	}
 }
 
-func (w *Work) Dispatched(ci *ClientInfo) {
+func NewWork(partOf *Job, partId string, Cmd string) *Work {
+	work := &Work{
+		partOf:    partOf,
+		PartID:    partId,
+		Command:   Cmd,
+		failCount: 0,
+		Done:      false,
+		status:    "",
+	}
+	partOf.Parts = append(partOf.Parts, work)
+
+	return work
+}
+
+func (w *Work) Dispatch(ci *ClientInfo) {
 	w.DispatchTime = time.Now()
 	w.CurrentClient = ci
-	w.partOf.callback(w)
 }
 
 func (w *Work) Failed() {
@@ -94,7 +97,6 @@ func (w *Work) Failed() {
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.failCount++
 	w.CurrentClient = nil
-	w.partOf.callback(w)
 }
 
 func (w *Work) Succeeded() {
@@ -103,12 +105,10 @@ func (w *Work) Succeeded() {
 	w.Done = true
 	w.CompletedBy = w.CurrentClient
 	w.CurrentClient = nil
-	w.partOf.callback(w)
 }
 
 func (w *Work) SetStatus(status string) {
 	w.status = status
-	w.partOf.callback(w)
 }
 
 func (w *Work) PartOf() *Job {
@@ -143,17 +143,6 @@ func (w *Work) FailCount() int {
 	return w.failCount
 }
 
-func (w *Work) MakeComms() *WorkComms {
-	return &WorkComms{
-		//PartID:         w.PartID,
-		WindowsCommand: w.WindowsCommand,
-		LinuxCommand:   w.LinuxCommand,
-		ReturnEnv:      w.ReturnEnv,
-		Env:            w.partOf.Env,
-		PartID:         w.PartID,
-	}
-}
-
 func (w *Work) MarshalJSON() ([]byte, error) {
 	m := make(map[string]interface{})
 	m["PartID"] = w.PartID
@@ -161,8 +150,8 @@ func (w *Work) MarshalJSON() ([]byte, error) {
 	m["RunTime"] = w.RunTime().String()
 	m["TotalRunTime"] = w.TotalRunTime().String()
 	m["FailCount"] = w.FailCount()
-	b,e := json.Marshal(m)
-	return b,e
+	b, e := json.Marshal(m)
+	return b, e
 }
 
 func (j *Job) callback(e interface{}) {
@@ -173,11 +162,11 @@ func (j *Job) MarshalBinary() (data []byte, err error) {
 	res := &bytes.Buffer{}
 	//Encode all the public stuff
 	encoder := gob.NewEncoder(res)
-	err = encoder.Encode(j.Owner)
+	err = encoder.Encode(j.OwnerID)
 	if err != nil {
 		return nil, err
 	}
-	err = encoder.Encode(j.JobID)
+	err = encoder.Encode(j.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -198,14 +187,29 @@ func (j *Job) MarshalBinary() (data []byte, err error) {
 	return res.Bytes(), nil
 }
 
+//Sets all private members for work and job to work correctly
+func (j *Job) Setup() {
+	for _, w := range j.Parts {
+		w.partOf = j
+	}
+}
+
+func (j *Job) CreateWorkComms(w *Work) *WorkComms {
+	res := WorkComms{}
+	res.Env = j.Env
+	res.ReturnEnv = j.ReturnEnv
+	res.Parts.Command = w.Command
+	return &res
+}
+
 func (j *Job) UnmarshalBinary(data []byte) error {
 	r := bytes.NewReader(data)
 	decoder := gob.NewDecoder(r)
-	res := decoder.Decode(j.Owner)
+	res := decoder.Decode(j.OwnerID)
 	if res != nil {
 		return res
 	}
-	res = decoder.Decode(j.JobID)
+	res = decoder.Decode(j.Id)
 	if res != nil {
 		return res
 	}
@@ -220,10 +224,6 @@ func (j *Job) UnmarshalBinary(data []byte) error {
 	res = decoder.Decode(j.Env)
 	if res != nil {
 		return res
-	}
-
-	for _, w := range j.Parts {
-		w.partOf = j
 	}
 
 	return nil

@@ -1,13 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"container/list"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -16,71 +13,6 @@ import (
 	"github.com/HeinOldewage/Hyades"
 )
 
-type TaurusServer struct {
-	ListenAddress string
-	DBhandle      *DB
-}
-
-func (ts *TaurusServer) Listen() error {
-	listener, err := net.Listen("tcp", ts.ListenAddress)
-	if err != nil {
-		return err
-	}
-	defer listener.Close()
-	for {
-		conn, _ := listener.Accept()
-		log.Println("Got connection")
-		go ts.handle(conn)
-	}
-}
-
-func (ts *TaurusServer) handle(conn net.Conn) {
-	/*
-		Must:
-			Get a job
-			Send the job
-			Wait for job to be recieved
-			Save the results
-		Later:
-			Allow for job cancelation (If it is stuck in an infinite loop
-			Allow reconnection of clients(network failure or server restart)
-	*/
-	defer conn.Close()
-	job := ts.DBhandle.GetNextJob()
-	log.Println("Got a job", job)
-
-	var sendJob Hyades.Job
-	sendJob.Command = job.Works.Jobs.Command
-	sendJob.SaveEnvironment = job.Works.Jobs.SaveEnvironment
-
-	envFile, err := os.Open(job.Works.Env)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	sendJob.Env, err = ioutil.ReadAll(envFile)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	data, err := json.Marshal(sendJob)
-
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	conn.Write(data)
-
-	jsonReader := json.NewDecoder(conn)
-
-	jobResult := Hyades.JobResult{}
-	jsonReader.Decode(&jobResult)
-
-	log.Println(jobResult)
-
-}
-
 func main() {
 	fmt.Println("This is the distribution server")
 	db, err := NewDB()
@@ -88,16 +20,13 @@ func main() {
 		log.Println(err)
 	}
 	log.Println("Job:", db.GetNextJob())
-	ts := TaurusServer{ListenAddress: ":8085", DBhandle: db}
 
-	ts.Listen()
-
+	ws := NewWorkServer(":8080", db)
+	ws.Listen()
 }
 
-
-
 type clientStats struct {
-	Info        *concordis.ClientInfo
+	Info        *Hyades.ClientInfo
 	ConnectedAt time.Time
 	PartsDone   int32
 }
@@ -115,16 +44,15 @@ type workServerStats struct {
 }
 
 type WorkServer struct {
-	Address   string
-	Lock      *sync.RWMutex
-	emptyCond *sync.Cond
-	workList  *list.List
+	Address string
+
+	db *DB
 
 	Log   *log.Logger
 	Stats *workServerStats
 }
 
-func NewWorkServer(address string) *WorkServer {
+func NewWorkServer(address string, db *DB) *WorkServer {
 	logFile, err := os.OpenFile("log.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalln("Failed to open log file", ":", err)
@@ -134,14 +62,10 @@ func NewWorkServer(address string) *WorkServer {
 
 	res := &WorkServer{
 		address,
-		&sync.RWMutex{},
-		nil,
-		list.New(),
+		db,
 		Log,
 		&workServerStats{ClientTimes: make([]time.Duration, 0), ConnectedClient: make(map[string]*clientStats)},
 	}
-
-	res.emptyCond = sync.NewCond(res.Lock)
 	Log.Println("Work server successfully created")
 	return res
 }
@@ -162,66 +86,29 @@ func (ws *WorkServer) Listen() {
 	}
 }
 
-func (ws *WorkServer) StartJob(j *concordis.Job) {
-	ws.Lock.Lock()
-	defer ws.Lock.Unlock()
-	for _, w := range j.Parts {
-		if !w.IsDone() {
-			w.SetStatus("In Queue")
-			ws.workList.PushBack(w)
-		}
-	}
-	ws.Log.Println("Job ", j.JobID, " started")
-	ws.emptyCond.Broadcast()
+func (ws *WorkServer) StartJob(j *Hyades.Job) {
+
 }
 
-func (ws *WorkServer) StopJob(j *concordis.Job) {
-	ws.Lock.Lock()
-	defer ws.Lock.Unlock()
-	for _, w := range j.Parts {
-		for e := ws.workList.Front(); e != nil; e = e.Next() {
-			if e.Value == w {
-				if !w.IsDone() {
-					w.SetStatus("Stopped")
-				}
-				ws.workList.Remove(e)
-				break
-			}
-		}
-	}
-	ws.Log.Println("Job ", j.JobID, " stopped")
-}
+func (ws *WorkServer) StopJob(j *Hyades.Job) {
 
-func (ws *WorkServer) AddWork(w *concordis.Work) {
-	ws.Lock.Lock()
-	defer ws.Lock.Unlock()
-	ws.workList.PushBack(w)
-	ws.emptyCond.Broadcast()
 }
 
 func (ws *WorkServer) GetWorkAvailable() int {
-	ws.Lock.RLock()
-	defer ws.Lock.RUnlock()
-	return ws.workList.Len()
+
+	return 0
 }
 
-func (ws *WorkServer) getWork() *concordis.Work {
-	ws.Lock.Lock()
-	defer ws.Lock.Unlock()
-
-	for ws.workList.Len() == 0 {
-		ws.emptyCond.Wait()
-	}
-	return ws.workList.Remove(ws.workList.Front()).(*concordis.Work)
+func (ws *WorkServer) getWork() *Hyades.Work {
+	return ws.db.GetNextJob()
 }
 
-func (ws *WorkServer) retryWork(work *concordis.Work) {
+func (ws *WorkServer) retryWork(work *Hyades.Work) {
 	work.Failed()
 	work.SetStatus("In Queue after error")
-	ws.AddWork(work)
 }
 
-func (ws *WorkServer) doneWork(work *concordis.Work, res *concordis.WorkResult) {
+func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) {
 	work.Succeeded()
 	work.SetStatus("Saving work")
 	ws.SaveResult(work, res)
@@ -229,7 +116,7 @@ func (ws *WorkServer) doneWork(work *concordis.Work, res *concordis.WorkResult) 
 	atomic.AddInt32(&work.PartOf().NumPartsDone, 1)
 }
 
-func (ws *WorkServer) SaveResult(w *concordis.Work, res *concordis.WorkResult) {
+func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) {
 	//Get Job work was part of, Get person Job belonged to and then save under
 	//Person.JobFolder\Job.JobID\Work.partID\
 
@@ -238,7 +125,7 @@ func (ws *WorkServer) SaveResult(w *concordis.Work, res *concordis.WorkResult) {
 	//StdOut.txt
 	//ErrOut.txtlogFile
 
-	folder := filepath.Join("userData", w.PartOf().Owner.JobFolder, w.PartOf().JobID, w.PartID)
+	folder := filepath.Join("userData", w.PartOf().JobFolder, w.PartOf().Id, w.PartID)
 	os.MkdirAll(folder, os.ModeDir)
 	if len(res.Env) > 0 {
 		envfile, err := os.Create(filepath.Join(folder, "Env.zip"))
@@ -268,7 +155,7 @@ func (wss *workServerStats) Connected() {
 	atomic.AddInt32(&wss.Connects, 1)
 }
 
-func (wss *workServerStats) Disconnected(info *concordis.ClientInfo) {
+func (wss *workServerStats) Disconnected(info *Hyades.ClientInfo) {
 	atomic.AddInt32(&wss.Disconnects, 1)
 	if info != nil {
 		wss.Lock()
@@ -290,14 +177,14 @@ func (wss *workServerStats) JobError() {
 	atomic.AddInt32(&wss.JobErrorCount, 1)
 }
 
-func (wss *workServerStats) DonePart(info *concordis.ClientInfo) {
+func (wss *workServerStats) DonePart(info *Hyades.ClientInfo) {
 	atomic.AddInt32(&wss.PartsDone, 1)
 	wss.RLock()
 	defer wss.RUnlock()
 	atomic.AddInt32(&wss.ConnectedClient[info.ComputerName+":"+info.OperatingSystem].PartsDone, 1)
 }
 
-func (wss *workServerStats) Announced(info *concordis.ClientInfo) {
+func (wss *workServerStats) Announced(info *Hyades.ClientInfo) {
 	wss.Lock()
 	defer wss.Unlock()
 	wss.ConnectedClient[info.ComputerName+":"+info.OperatingSystem] = &clientStats{

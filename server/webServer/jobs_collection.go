@@ -2,53 +2,41 @@ package main
 
 import (
 	"github.com/HeinOldewage/Hyades"
-	"fmt"
-	"sync"
-	"sync/atomic"
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 type JobMap struct {
-	JobID   int32
-	Jobs    map[string]*Hyades.Job
-	jobLock *sync.RWMutex
-	JobObservers *Hyades.ObserverList
+	session *mgo.Session
 }
 
-func NewJobMap() *JobMap {
-	return &JobMap{
-		0,
-		make(map[string]*Hyades.Job),
-		&sync.RWMutex{},
-		Hyades.NewObserverList(),
-		
-	}
+func NewJobMap(session *mgo.Session) *JobMap {
+	return &JobMap{session}
 }
 
 func (jm *JobMap) NewJob(user *Hyades.Person) *Hyades.Job {
-	return Hyades.NewJob(user, fmt.Sprint(atomic.AddInt32(&jm.JobID, 1)), make([]*Hyades.Work, 0), 0, make([]byte, 0))
+	return &Hyades.Job{OwnerID: user.Id}
 }
 
-func (jm *JobMap) GetJob(id string) (job *Hyades.Job, ok bool) {
-	jm.jobLock.RLock()
-	defer jm.jobLock.RUnlock()
-	job, ok = jm.Jobs[id]
-	return
+func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
+	jobIn := make(map[string]interface{})
+	jobIn["_id"] = bson.ObjectId(id)
+	job = new(Hyades.Job)
+	err = jm.session.DB("Admin").C("Jobs").Find(&jobIn).One(job)
+
+	return job, err
 }
 
-func (jm *JobMap) GetAll() (jobs []*Hyades.Job) {
-	jm.jobLock.RLock()
-	defer jm.jobLock.RUnlock()
-	jobs = make([]*Hyades.Job, 0)
-	for _, job := range jm.Jobs {
-		jobs = append(jobs, job)
+func (jm *JobMap) GetAll() (jobs []*Hyades.Job, err error) {
+	iterator := jm.session.DB("Admin").C("Jobs").Find(nil).Iter()
+	var job Hyades.Job
+	for iterator.Next(&job) {
+		jobs = append(jobs, &job)
 	}
 
-	return
+	return jobs, iterator.Err()
 }
 
-func (jm *JobMap) AddJob(job *Hyades.Job) {
-	jm.jobLock.RLock()
-	defer jm.jobLock.RUnlock()
-	jm.Jobs[job.JobID] = job
-	jm.JobObservers.Callback(job)
+func (jm *JobMap) AddJob(job *Hyades.Job) error {
+	return jm.session.DB("Admin").C("Jobs").Insert(job)
 }

@@ -1,42 +1,47 @@
 package main
 
 import (
-
-	"github.com/HeinOldewage/Hyades"
 	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/HeinOldewage/Hyades"
 	//"github.com/gorilla/context"
 
-	"github.com/gorilla/sessions"
 	"html/template"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/gorilla/sessions"
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 func main() {
 	fmt.Println("This is the web server")
 	/*
-	http.Handle("/", http.FileServer(http.Dir("./resources")))
-	err := http.ListenAndServe(":80", nil)
+		http.Handle("/", http.FileServer(http.Dir("./resources")))
+		err := http.ListenAndServe(":80", nil)
+		if err != nil {
+			panic(err)
+		}*/
+	session, err := mgo.Dial("127.0.0.1")
 	if err != nil {
-		panic(err)
-	}*/
-	submitServer := NewSubmitServer(":80", nil)
+		log.Fatal(err)
+	}
+	submitServer := NewSubmitServer(":80", session)
 	submitServer.Listen()
 }
-
 
 const dataPath string = "userData"
 const usersFileName string = "users.gob"
@@ -52,24 +57,18 @@ type SubmitServer struct {
 	observers *Hyades.ObserverList
 }
 
-func NewSubmitServer(Address string, js interface{}) *SubmitServer {
+func NewSubmitServer(Address string, session *mgo.Session) *SubmitServer {
 
 	//Delete all previous Jobs, After Users are saved/loaded from file only delete if that fails
-	userMap, err := NewUserMap(usersFileName)
-	if err != nil {
-		log.Println(err)
-		log.Println("Creating Blank Submit Server")
-		os.RemoveAll(dataPath)
-	} else {
-		log.Println("Loading Submit Server")
-	}
+
+	userMap := NewUserMap(session)
 
 	defer log.Println("NewSubmitServer Done")
 	return &SubmitServer{Address,
-		js,
+		nil,
 		sessions.NewCookieStore([]byte("ForTheUnity")),
 		make(map[string]*Hyades.Person),
-		NewJobMap(),
+		NewJobMap(session),
 		userMap,
 		Hyades.NewObserverList(),
 	}
@@ -101,7 +100,7 @@ func (ss *SubmitServer) Listen() {
 	http.HandleFunc("/TryLogin", ss.loginUser)
 	http.HandleFunc("/TryRegister", ss.newUser)
 
-	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("web/files"))))
+	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("resources/files"))))
 
 	log.Println("Starting SubmitServer")
 	err := http.ListenAndServe(ss.Address, nil)
@@ -112,42 +111,23 @@ func (ss *SubmitServer) Listen() {
 
 func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, req *http.Request) {
 	Env, Envfh, _ := req.FormFile("Env")
-	windows, _, _ := req.FormFile("windowsCMD")
-	linux, _, _ := req.FormFile("linuxCMD")
 	descr, _, _ := req.FormFile("workDescr")
-	if !(Env == nil || Envfh == nil) {
+	if !(Env == nil || Envfh == nil) && descr != nil {
+
 		envBytes, _ := ioutil.ReadAll(Env)
-		windowsReader := bufio.NewReader(windows)
-		linuxReader := bufio.NewReader(linux)
 		descrReader := bufio.NewReader(descr)
-		job := ss.jobs.NewJob(user)
-		job.Env = envBytes
 
-		var k int
-		for k = 1; ; k++ {
-			wcmd, werr := windowsReader.ReadString('\n')
-			lcmd, lerr := linuxReader.ReadString('\n')
-			if (werr == nil) && (lerr == nil) {
-				id := fmt.Sprint(k)
-				if descr != nil {
-					id, _ = descrReader.ReadString('\n')
-					id = strings.Trim(id, "\n\r")
+		job := ss.Jobs().NewJob(user)
 
-				}
-				wcmd = strings.Trim(wcmd, "\n\r")
-				lcmd = strings.Trim(lcmd, "\n\r")
-				work := Hyades.NewWork(job, id, wcmd, lcmd, req.FormValue("ReturnEnv") == "true")
+		decodeError := json.NewDecoder(descrReader).Decode(job)
 
-				log.Println("Adding work", wcmd, lcmd, req.FormValue("ReturnEnv"))
-				job.AddWork(work)
-
-			} else {
-				break
-			}
-
+		if decodeError != nil {
+			http.Error(w, decodeError.Error(), http.StatusBadRequest)
 		}
-		ss.JobServer.StartJob(job)
-		ss.jobs.AddJob(job)
+
+		job.Env = envBytes
+		ss.Jobs().AddJob(job)
+
 	} else {
 
 		log.Println("File not correctly uploaded")
@@ -189,7 +169,6 @@ func GetSubject(val reflect.Value, path []string) (interface{}, error) {
 			val = val.Call([]reflect.Value{})[0]
 		}
 	}
-
 
 	if len(query) != 0 {
 		switch val.Type().Kind() {
@@ -253,7 +232,7 @@ func (ss *SubmitServer) addObserver(user *Hyades.Person, w http.ResponseWriter, 
 	}
 	subject, ok := val.(Hyades.Observable)
 	if !ok {
-		fmt.Fprintf(w, "Object (%T) not observable",val)
+		fmt.Fprintf(w, "Object (%T) not observable", val)
 		return
 	}
 	observer := subject.AddObserver()
@@ -316,12 +295,14 @@ func (ss *SubmitServer) stopJob(user *Hyades.Person, w http.ResponseWriter, req 
 	}
 	log.Println("Stopping", id[0])
 
-	if job, ok := ss.jobs.GetJob(id[0]); ok {
-		ss.JobServer.StopJob(job)
-	} else {
-		log.Println("Failed to find job", id[0], "in map")
+	//TODO :: Notify
+	/*	if job, ok := ss.jobs.GetJob(id[0]); ok {
 
-	}
+			//ss.JobServer.StopJob(job)
+		} else {
+			log.Println("Failed to find job", id[0], "in map")
+
+	}*/
 
 }
 
@@ -335,12 +316,15 @@ func (ss *SubmitServer) startJob(user *Hyades.Person, w http.ResponseWriter, req
 	}
 	log.Println("Starting", id[0])
 
-	if job, ok := ss.jobs.GetJob(id[0]); ok {
-		ss.JobServer.StartJob(job)
-	} else {
-		log.Println("Failed to find job", id[0], "in map")
+	//TODO :: Notify
+	/*
+		if job, ok := ss.jobs.GetJob(id[0]); ok {
 
-	}
+			//ss.JobServer.StartJob(job)
+		} else {
+			log.Println("Failed to find job", id[0], "in map")
+
+		}*/
 }
 
 func (ss *SubmitServer) createJob(user *Hyades.Person, w http.ResponseWriter, req *http.Request) {
@@ -349,8 +333,8 @@ func (ss *SubmitServer) createJob(user *Hyades.Person, w http.ResponseWriter, re
 	fm["currentTab"] = func() string {
 		return "createJob"
 	}
-	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("web/templates/frame.html", "web/templates/createJobs/header.html",
-		"web/templates/nav.html", "web/templates/createJobs/body.html")
+	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("resources/templates/frame.html", "resources/templates/createJobs/header.html",
+		"resources/templates/nav.html", "resources/templates/createJobs/body.html")
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -367,12 +351,43 @@ func (ss *SubmitServer) createJob(user *Hyades.Person, w http.ResponseWriter, re
 
 func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req *http.Request) {
 	var fm template.FuncMap = make(template.FuncMap)
+
+	fm["IDToString"] = func(id string) string {
+		data, err := bson.ObjectId(id).MarshalText()
+		log.Println("IDToString", bson.ObjectId(id))
+		if err != nil {
+			log.Println("listJobs_IDToString", err, id)
+			return ""
+		}
+		return string(data)
+	}
+
 	fm["CountDone"] = func(id string) string {
-		job, _ := ss.jobs.GetJob(id)
+		var ID bson.ObjectId
+		err := ID.UnmarshalText([]byte(id))
+		if err != nil {
+			log.Println("listJobs_CountDone", err, id, ID)
+			return ""
+		}
+		job, err := ss.jobs.GetJob(string(ID))
+		if err != nil {
+			log.Println("listJobs_CountDone", err, id, ID)
+			return ""
+		}
 		return fmt.Sprint(atomic.LoadInt32(&job.NumPartsDone))
 	}
 	fm["totalWork"] = func(id string) string {
-		job, _ := ss.jobs.GetJob(id)
+		var ID bson.ObjectId
+		err := ID.UnmarshalText([]byte(id))
+		if err != nil {
+			log.Println("listJobs_totalWork", err, id, ID)
+			return ""
+		}
+		job, err := ss.jobs.GetJob(string(ID))
+		if err != nil {
+			log.Println("listJobs_totalWork", err, id, ID)
+			return ""
+		}
 		return fmt.Sprint(len(job.Parts))
 	}
 
@@ -380,15 +395,21 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 		return "listJobs"
 	}
 
-	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("web/templates/frame.html", "web/templates/listJobs/body.html",
-		"web/templates/listJobs/listJob.html", "web/templates/listJobs/header.html", "web/templates/nav.html")
+	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("resources/templates/frame.html", "resources/templates/listJobs/body.html",
+		"resources/templates/listJobs/listJob.html", "resources/templates/listJobs/header.html", "resources/templates/nav.html")
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	pageData := map[string]interface{}{"NavData": user, "HeaderData": nil, "BodyData": ss.jobs.GetAll()}
+	jobs, err := ss.jobs.GetAll()
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	pageData := map[string]interface{}{"NavData": user, "HeaderData": nil, "BodyData": jobs}
 	err = jobsTemplate.Execute(w, pageData)
 
 	if err != nil {
@@ -401,28 +422,61 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 	req.ParseForm()
 	id, ok := req.Form["id"]
 	if !ok {
+		log.Println(req.Form)
 		http.Error(w, "Job id not provided", http.StatusNotFound)
 		return
 	}
-	log.Println(req.Form)
+
 	var fm template.FuncMap = make(template.FuncMap)
+	fm["IDToString"] = func(id string) string {
+		data, err := bson.ObjectId(id).MarshalText()
+		if err != nil {
+			log.Println("jobStatus_IDToString", err, id)
+			return ""
+		}
+		return string(data)
+	}
+
 	fm["CountDone"] = func(id string) string {
-		job, _ := ss.jobs.GetJob(id)
+		var ID bson.ObjectId
+		err := ID.UnmarshalText([]byte(id))
+		if err != nil {
+			log.Println("listJobs_CountDone", err, id, ID)
+			return ""
+		}
+		job, err := ss.jobs.GetJob(string(ID))
+		if err != nil {
+			log.Println("listJobs_CountDone", err, id, ID)
+			return ""
+		}
 		return fmt.Sprint(atomic.LoadInt32(&job.NumPartsDone))
 	}
 	fm["currentTab"] = func() string {
 		return ""
 	}
 
-	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("web/templates/frame.html", "web/templates/jobStatus/header.html",
-		"web/templates/jobStatus/body.html", "web/templates/jobStatus/statusWork.html", "web/templates/nav.html")
+	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("resources/templates/frame.html", "resources/templates/jobStatus/header.html",
+		"resources/templates/jobStatus/body.html", "resources/templates/jobStatus/statusWork.html", "resources/templates/nav.html")
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	job, _ := ss.jobs.GetJob(id[0])
+	var ID bson.ObjectId
+	err = ID.UnmarshalText([]byte(id[0]))
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	job, err := ss.jobs.GetJob(string(ID))
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	pageData := map[string]interface{}{"NavData": user, "HeaderData": job, "BodyData": job}
 	err = jobsTemplate.Execute(w, pageData)
 
@@ -443,10 +497,10 @@ func (ss *SubmitServer) getJobResult(user *Hyades.Person, w http.ResponseWriter,
 
 	job, _ := ss.jobs.GetJob(id[0])
 
-	TempJobFolder := filepath.Join("userData", job.Owner.JobFolder, job.JobID)
+	TempJobFolder := filepath.Join("userData", job.JobFolder, job.Id)
 	retEnv := Hyades.ZipCompressFolder(TempJobFolder)
 	log.Println(TempJobFolder, "getJobResult bytes:", len(retEnv))
-	http.ServeContent(w, req, "Job"+job.JobID+".zip", time.Now(), bytes.NewReader(retEnv))
+	http.ServeContent(w, req, "Job"+job.Id+".zip", time.Now(), bytes.NewReader(retEnv))
 
 }
 
@@ -457,8 +511,8 @@ func (ss *SubmitServer) help(user *Hyades.Person, w http.ResponseWriter, req *ht
 		return "help"
 	}
 
-	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("web/templates/frame.html", "web/templates/help/body.html",
-		"web/templates/help/header.html", "web/templates/nav.html")
+	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("resources/templates/frame.html", "resources/templates/help/body.html",
+		"resources/templates/help/header.html", "resources/templates/nav.html")
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -480,8 +534,8 @@ func (ss *SubmitServer) about(user *Hyades.Person, w http.ResponseWriter, req *h
 		return "about"
 	}
 
-	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("web/templates/frame.html", "web/templates/about/body.html",
-		"web/templates/about/header.html", "web/templates/nav.html")
+	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("resources/templates/frame.html", "resources/templates/about/body.html",
+		"resources/templates/about/header.html", "resources/templates/nav.html")
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -507,8 +561,8 @@ func (ss *SubmitServer) admin(user *Hyades.Person, w http.ResponseWriter, req *h
 		return "admin"
 	}
 
-	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("web/templates/frame.html", "web/templates/admin/body.html",
-		"web/templates/admin/header.html", "web/templates/nav.html")
+	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("resources/templates/frame.html", "resources/templates/admin/body.html",
+		"resources/templates/admin/header.html", "resources/templates/nav.html")
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -557,13 +611,6 @@ func (ss *SubmitServer) newUser(w http.ResponseWriter, req *http.Request) {
 
 	if ok {
 		log.Println("New user added")
-		err := ss.users.Save(usersFileName)
-		if err != nil {
-			log.Println("Could not save user map")
-			log.Println(err)
-		} else {
-			log.Println("Successfully saved user map")
-		}
 
 		sessID := strconv.FormatInt(time.Now().Unix(), 10)
 		session.Values["sessID"] = sessID

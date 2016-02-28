@@ -3,11 +3,11 @@ package main
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/json"
-	"fmt"
+	"flag"
 	"io"
 	"log"
-	"net"
+	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -15,105 +15,164 @@ import (
 	"runtime"
 
 	"github.com/HeinOldewage/Hyades"
+	//"sync/atomic"
+	_ "net/http/pprof"
+	"time"
 )
 
-type TaurusClient struct {
-	ServerAddress string
-	conn          net.Conn
+const (
+	start  int = 0
+	stop   int = 1
+	pause  int = 2
+	resume int = 3
+)
+
+var ServerAddress0 *string = flag.String("ServerAddress", "0.0.0.0:55555", "The server to get Jobs from")
+var ServerAddress1 *string = flag.String("ServerAddress1", "1.1.1.1:55555", "The backup server to get Jobs from")
+var logFile *string = flag.String("log", "", "The File to log to, if blank logging is done to stdout")
+var retryTime *int = flag.Int("retry", 120, "The client will attempt to connect to the server approximately every so many seconds")
+var jiggleTime *int = flag.Int("jiggle", 5, "The upper bound for the random interval by which retry time is offset")
+var heartbeat *int = flag.Int("heartbeat", 120, "Time interval (in minutes) that the heartbeat will be sent")
+
+func main() {
+	go http.ListenAndServe(":8080", nil)
+	flag.Parse()
+	if *logFile != "" {
+		file, err := os.Create(*logFile)
+		if err == nil {
+			defer file.Close()
+			log.SetOutput(file)
+		} else {
+			log.Println("When creating log file", err)
+		}
+	}
+	log.Println("A Client that executes jobs")
+
+	go func() {
+		for {
+			StartComms(*ServerAddress0, *ServerAddress1)
+			dura := *retryTime + rand.Intn(*jiggleTime)
+			time.Sleep(time.Duration(dura) * time.Second)
+		}
+	}()
+
+	events := HandleService()
+	if events != nil {
+
+		for e := range events {
+
+			switch e {
+			case start:
+			case stop:
+				log.Println("Service is stopped")
+				//The loop will stop once events is closed. This allows the acknowledgement to be sent.
+			case pause:
+			case resume:
+			}
+		}
+	} else {
+		select {}
+	}
+
 }
 
-func (tc *TaurusClient) Connect() (err error) {
-	tc.conn, err = net.Dial("tcp", tc.ServerAddress)
-	return err
-}
+func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
+	res := &Hyades.WorkResult{make([]byte, 0), make([]byte, 0), make([]byte, 0), "", 0}
+	TempJobFolder := filepath.Join("Env", "Temp")
+	log.Println("Making folder:[", TempJobFolder, "]")
 
-func (tc *TaurusClient) GetJob() (job *Hyades.Job, err error) {
-	decoder := json.NewDecoder(tc.conn)
-	job = new(Hyades.Job)
-	err = decoder.Decode(job)
-	return
-}
-
-func (tc *TaurusClient) doJob(job *Hyades.Job) (*Hyades.JobResult, error) {
-	jobResult := new(Hyades.JobResult)
-	//Setup The Environment
-	zipFile, err := zip.NewReader(bytes.NewReader(job.Env), int64(len(job.Env)))
+	err := os.MkdirAll(TempJobFolder, os.ModeDir)
 	if err != nil {
-		return nil, err
+		log.Println("Error creating folder:", err)
+		res.Error = err.Error()
+		resChan <- res
+		return
 	}
-	TempJobFolder := "Env"
-	for _, f := range zipFile.File {
-		os.MkdirAll(filepath.Join(TempJobFolder, path.Dir(f.Name)), os.ModeDir)
-		outFile, err := os.Create(f.Name)
-		if err != nil {
-			return nil, err
-		}
-		rc, err := f.Open()
-		if err != nil {
-			log.Fatal(err)
-		}
-		_, err = io.Copy(outFile, rc)
-		if err != nil {
-			log.Println(err)
-		}
-		rc.Close()
-		outFile.Close()
+	defer os.RemoveAll(TempJobFolder)
+
+	envreader := bytes.NewReader(work.Env)
+	unzipper, err := zip.NewReader(envreader, int64(len(work.Env)))
+
+	if err != nil {
+		log.Println("Error zip.NewReader:", err)
+		res.Error = err.Error()
+		resChan <- res
+		return
 	}
-	//Run the command
-	var cmd *exec.Cmd
-	if runtime.GOOS == "linux" {
-		cmdstr := job.Command
-		cmd = exec.Command("sh", "-c", "cd "+TempJobFolder, " && "+cmdstr)
+
+	for _, file := range unzipper.File {
+		os.MkdirAll(filepath.Join(TempJobFolder, path.Dir(file.Name)), os.ModeDir)
+
+		outfile, _ := os.Create(filepath.Join(TempJobFolder, file.Name))
+		zf, err := file.Open()
+		if err != nil {
+			log.Println("Error reading zip:", err)
+			res.Error = err.Error()
+			resChan <- res
+			return
+		}
+		io.Copy(outfile, zf)
+		outfile.Close()
+		zf.Close()
 	}
+
 	stdBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
+	var cmdstr string
+	var cmd *exec.Cmd
+	if runtime.GOOS == "linux" {
+		cmdstr = work.Parts.Command
+		cmd = exec.Command("sh", "-c", "cd "+TempJobFolder, " && "+cmdstr)
+	} else {
+		cmdstr = work.Parts.Command
+		cmd = exec.Command("cmd", "/C", "cd "+TempJobFolder, " & "+cmdstr)
+	}
+
+	fullpath, _ := filepath.Abs(TempJobFolder)
+	fullpath = "\"" + fullpath + "\""
+
+	log.Println("Running command", "cmd", "/C", "cd "+TempJobFolder, " & "+cmdstr)
 
 	cmd.Stdout = stdBuf
 	cmd.Stderr = errBuf
 	err = cmd.Run()
-
-	//Collect the environment
-
-	jobResult.StdOut = stdBuf.Bytes()
-	jobResult.StdErr = errBuf.Bytes()
-	jobResult.SystemError = err.Error()
-	if job.SaveEnvironment {
-		jobResult.Env = Hyades.ZipCompressFolder(TempJobFolder)
-	}
-	return nil, nil
-}
-
-func (tc *TaurusClient) SendJobResult(jobResult *Hyades.JobResult) (err error) {
-	encoder := json.NewEncoder(tc.conn)
-
-	err = encoder.Encode(jobResult)
-	return err
-}
-
-func main() {
-	fmt.Println("This is the taurus client")
-
-	tc := TaurusClient{ServerAddress: "127.0.0.1:8085"}
-
-	err := tc.Connect()
 	if err != nil {
 		log.Println(err)
+		res.Error = err.Error()
+		resChan <- res
 		return
 	}
-	for {
-		job, err := tc.GetJob()
-		if err != nil {
-			log.Println(err)
-		}
-		jobResult, err := tc.doJob(job)
-		if err != nil {
-			log.Println(err)
-		}
+	log.Println("Done command", "cmd", "/C", "cd "+TempJobFolder, " & "+cmdstr)
+	//Delete any exes in the folder; they don't need to be sent back to the server
 
-		err = tc.SendJobResult(jobResult)
-		if err != nil {
-			log.Println(err)
+	scan, err := os.Open(TempJobFolder)
+	if err != nil {
+		panic(err)
+	}
+
+	files, err := scan.Readdir(-1)
+	scan.Close()
+
+	if err != nil {
+		log.Println(err)
+	} else {
+		for _, file := range files {
+			filename := file.Name()
+			if filename[len(filename)-4:] == ".exe" {
+				if err := os.Remove(filepath.Join(TempJobFolder, filename)); err != nil {
+					log.Println(err)
+				}
+			}
 		}
 	}
 
+	var retEnv []byte
+	if work.ReturnEnv {
+		retEnv = Hyades.ZipCompressFolder(TempJobFolder)
+	}
+
+	res.Env = retEnv
+	res.StdOutStream = stdBuf.Bytes()
+	res.ErrOutStream = errBuf.Bytes()
+	resChan <- res
 }
