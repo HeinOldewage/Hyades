@@ -73,16 +73,18 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		work := c.Owner.getWork()
 		c.Work = work
 
-		work.SetStatus("Sending work to client " + c.ClientInfo.ComputerName)
-		work.Dispatch(c.ClientInfo)
+		work.SetStatus("Sending work to client "+c.ClientInfo.ComputerName, c.Owner.db.session)
+		work.Dispatch(c.ClientInfo, c.Owner.db.session)
 
-		err := writer.Encode(work.PartOf().CreateWorkComms(work))
+		comms := work.PartOf().CreateWorkComms(work)
+		log.Println(comms)
+		err := writer.Encode(comms)
 		if err != nil {
 			c.FrameWorkError(err)
 			return
 		}
 
-		work.SetStatus("Awaiting response from client " + c.ClientInfo.ComputerName)
+		work.SetStatus("Awaiting response from client "+c.ClientInfo.ComputerName, c.Owner.db.session)
 
 		var res *Hyades.WorkResult = new(Hyades.WorkResult)
 		err = reader.Decode(res)
@@ -106,6 +108,8 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		err = c.Owner.db.SaveWork(work)
 		if err != nil {
 			log.Println("Saving work failed", err)
+		} else {
+			log.Println("Saved work", work)
 		}
 	}
 }

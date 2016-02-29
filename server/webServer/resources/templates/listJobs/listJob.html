@@ -1,7 +1,7 @@
 <div  class="jobList">
-<li class="prettyLi"><span class="prettySpan"> {{ IDToString .Id}}</span><p class="prettyP">
+<li class="prettyLi"><span class="prettySpan"></span><p class="prettyP">
 	<br>
-	<a href="JobStatus?id={{IDToString .Id}}">Job with id {{IDToString .Id}} </a>
+	<a href="JobStatus?id={{IDToString .Id}}">{{.Name}} </a>
 	<br>
 	({{ CountDone (IDToString .Id)}} of {{totalWork (IDToString .Id)}} complete)
 	</p></li>

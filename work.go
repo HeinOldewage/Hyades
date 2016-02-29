@@ -5,6 +5,9 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"time"
+
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 /*
@@ -59,7 +62,8 @@ type Work struct {
 	failCount     int
 	status        string
 
-	Command string
+	Command    string
+	Parameters string
 }
 
 /*
@@ -69,7 +73,8 @@ type WorkComms struct {
 	Env       []byte
 	ReturnEnv bool
 	Parts     struct {
-		Command string
+		Command    string
+		Parameters string
 	}
 }
 
@@ -87,32 +92,45 @@ func NewWork(partOf *Job, partId string, Cmd string) *Work {
 	return work
 }
 
-func (w *Work) Dispatch(ci *ClientInfo) {
+func (w *Work) Dispatch(ci *ClientInfo, session *mgo.Session) {
 	w.DispatchTime = time.Now()
 	w.CurrentClient = ci
+	w.Save(session)
 }
 
-func (w *Work) Failed() {
+func (w *Work) Failed(session *mgo.Session) {
 	w.FinishTime = time.Now()
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.failCount++
 	w.CurrentClient = nil
+	w.Save(session)
 }
 
-func (w *Work) Succeeded() {
+func (w *Work) Succeeded(session *mgo.Session) {
 	w.FinishTime = time.Now()
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.Done = true
 	w.CompletedBy = w.CurrentClient
 	w.CurrentClient = nil
+	w.Save(session)
 }
 
-func (w *Work) SetStatus(status string) {
+func (w *Work) SetStatus(status string, session *mgo.Session) {
 	w.status = status
+	w.Save(session)
 }
 
 func (w *Work) PartOf() *Job {
 	return w.partOf
+}
+
+func (w *Work) Index() int {
+	for i, p := range w.partOf.Parts {
+		if p == w {
+			return i
+		}
+	}
+	return -1
 }
 
 func (w *Work) IsDone() bool {
@@ -152,6 +170,14 @@ func (w *Work) MarshalJSON() ([]byte, error) {
 	m["FailCount"] = w.FailCount()
 	b, e := json.Marshal(m)
 	return b, e
+}
+
+func (w *Work) Save(session *mgo.Session) error {
+
+	query := bson.M{"_id": bson.ObjectId(w.PartOf().Id), "parts.command": w.Command, "parts.parameters": w.Parameters}
+	UpdateTo := bson.M{"$set": bson.M{"parts.$": *w}}
+	err := session.DB("Admin").C("Jobs").Update(query, UpdateTo)
+	return err
 }
 
 func (j *Job) callback(e interface{}) {
@@ -199,6 +225,7 @@ func (j *Job) CreateWorkComms(w *Work) *WorkComms {
 	res.Env = j.Env
 	res.ReturnEnv = j.ReturnEnv
 	res.Parts.Command = w.Command
+	res.Parts.Parameters = w.Parameters
 	return &res
 }
 

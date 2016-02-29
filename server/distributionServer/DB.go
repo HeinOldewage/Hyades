@@ -44,7 +44,7 @@ func (db *DB) GetNextJob() *Hyades.Work {
 		if iterator.Err() != nil {
 			panic(iterator.Err())
 		}
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 1)
 	}
 
 	return nil
@@ -52,11 +52,7 @@ func (db *DB) GetNextJob() *Hyades.Work {
 
 func (db *DB) SaveWork(work *Hyades.Work) error {
 
-	query := bson.M{"_id": bson.ObjectId(work.PartOf().Id), "parts.command": work.Command}
-	UpdateTo := bson.M{"$set": bson.M{"parts.$": *work}}
-	err := db.session.DB("Admin").C("Jobs").Update(query, UpdateTo)
-
-	return err
+	return work.Save(db.session)
 }
 
 func init() {
@@ -64,6 +60,9 @@ func init() {
 	if err != nil {
 		return
 	}
+	session.DB("Admin").DropDatabase()
+	session.DB("Admin").C("Jobs").DropCollection()
+	session.DB("Admin").C("Users").DropCollection()
 	return
 	dbnames, _ := session.DatabaseNames()
 	for _, name := range dbnames {

@@ -35,7 +35,7 @@ var jiggleTime *int = flag.Int("jiggle", 5, "The upper bound for the random inte
 var heartbeat *int = flag.Int("heartbeat", 120, "Time interval (in minutes) that the heartbeat will be sent")
 
 func main() {
-	go http.ListenAndServe(":8080", nil)
+	go http.ListenAndServe(":8081", nil)
 	flag.Parse()
 	if *logFile != "" {
 		file, err := os.Create(*logFile)
@@ -81,14 +81,14 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	TempJobFolder := filepath.Join("Env", "Temp")
 	log.Println("Making folder:[", TempJobFolder, "]")
 
-	err := os.MkdirAll(TempJobFolder, os.ModeDir)
+	err := os.MkdirAll(TempJobFolder, os.ModeDir|os.ModePerm)
 	if err != nil {
 		log.Println("Error creating folder:", err)
 		res.Error = err.Error()
 		resChan <- res
 		return
 	}
-	defer os.RemoveAll(TempJobFolder)
+	//defer os.RemoveAll(TempJobFolder)
 
 	envreader := bytes.NewReader(work.Env)
 	unzipper, err := zip.NewReader(envreader, int64(len(work.Env)))
@@ -101,7 +101,7 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	}
 
 	for _, file := range unzipper.File {
-		os.MkdirAll(filepath.Join(TempJobFolder, path.Dir(file.Name)), os.ModeDir)
+		os.MkdirAll(filepath.Join(TempJobFolder, path.Dir(file.Name)), os.ModeDir|os.ModePerm)
 
 		outfile, _ := os.Create(filepath.Join(TempJobFolder, file.Name))
 		zf, err := file.Open()
@@ -118,31 +118,35 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 
 	stdBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
-	var cmdstr string
 	var cmd *exec.Cmd
 	if runtime.GOOS == "linux" {
-		cmdstr = work.Parts.Command
-		cmd = exec.Command("sh", "-c", "cd "+TempJobFolder, " && "+cmdstr)
+		log.Println("Setting up the linux ccommand", work)
+		cmd = exec.Command(work.Parts.Command, work.Parts.Parameters)
 	} else {
-		cmdstr = work.Parts.Command
-		cmd = exec.Command("cmd", "/C", "cd "+TempJobFolder, " & "+cmdstr)
+		log.Println("Setting up the windows ccommand")
+		cmd = exec.Command("cmd", "/C", "cd "+TempJobFolder, " & "+work.Parts.Command+" "+work.Parts.Parameters)
 	}
 
 	fullpath, _ := filepath.Abs(TempJobFolder)
 	fullpath = "\"" + fullpath + "\""
 
-	log.Println("Running command", "cmd", "/C", "cd "+TempJobFolder, " & "+cmdstr)
-
+	log.Println("Running command", cmd)
+	cmd.Dir = TempJobFolder
 	cmd.Stdout = stdBuf
 	cmd.Stderr = errBuf
 	err = cmd.Run()
 	if err != nil {
-		log.Println(err)
+		log.Println("Error running command:", err)
 		res.Error = err.Error()
 		resChan <- res
 		return
 	}
-	log.Println("Done command", "cmd", "/C", "cd "+TempJobFolder, " & "+cmdstr)
+	cmd.StdoutPipe()
+	log.Println("Done command", cmd)
+
+	log.Println("Std", string(stdBuf.Bytes()), len(stdBuf.Bytes()))
+	log.Println("Err", string(errBuf.Bytes()), len(errBuf.Bytes()))
+
 	//Delete any exes in the folder; they don't need to be sent back to the server
 
 	scan, err := os.Open(TempJobFolder)

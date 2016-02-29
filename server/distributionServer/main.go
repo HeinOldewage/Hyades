@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,9 +20,11 @@ func main() {
 	if err != nil {
 		log.Println(err)
 	}
-	log.Println("Job:", db.GetNextJob())
+	fmt.Println("Connected to DB")
+	//log.Println("Job:", db.GetNextJob())
 
 	ws := NewWorkServer(":8080", db)
+
 	ws.Listen()
 }
 
@@ -67,10 +70,12 @@ func NewWorkServer(address string, db *DB) *WorkServer {
 		&workServerStats{ClientTimes: make([]time.Duration, 0), ConnectedClient: make(map[string]*clientStats)},
 	}
 	Log.Println("Work server successfully created")
+	log.Println("Do you see this?")
 	return res
 }
 
 func (ws *WorkServer) Listen() {
+	ws.Log.Println("About to listen on", ws.Address)
 	conn, err := net.Listen("tcp", ws.Address)
 	if err != nil {
 		panic(err)
@@ -104,15 +109,15 @@ func (ws *WorkServer) getWork() *Hyades.Work {
 }
 
 func (ws *WorkServer) retryWork(work *Hyades.Work) {
-	work.Failed()
-	work.SetStatus("In Queue after error")
+	work.Failed(ws.db.session)
+	work.SetStatus("In Queue after error", ws.db.session)
 }
 
 func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) {
-	work.Succeeded()
-	work.SetStatus("Saving work")
+	work.Succeeded(ws.db.session)
+	work.SetStatus("Saving work", ws.db.session)
 	ws.SaveResult(work, res)
-	work.SetStatus("Work done")
+	work.SetStatus("Work done", ws.db.session)
 	atomic.AddInt32(&work.PartOf().NumPartsDone, 1)
 }
 
@@ -125,8 +130,8 @@ func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) {
 	//StdOut.txt
 	//ErrOut.txtlogFile
 
-	folder := filepath.Join("userData", w.PartOf().JobFolder, w.PartOf().Id, w.PartID)
-	os.MkdirAll(folder, os.ModeDir)
+	folder := filepath.Join("userData", w.PartOf().JobFolder, w.PartOf().Name, strconv.Itoa(w.Index()))
+	os.MkdirAll(folder, os.ModeDir|os.ModePerm)
 	if len(res.Env) > 0 {
 		envfile, err := os.Create(filepath.Join(folder, "Env.zip"))
 		if err != nil {
