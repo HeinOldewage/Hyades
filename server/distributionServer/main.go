@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -14,9 +15,13 @@ import (
 	"github.com/HeinOldewage/Hyades"
 )
 
+var DBUsername *string = flag.String("DBUsername", "", "MongoDb username")
+var DBPassword *string = flag.String("DBPassword", "", "MongoDb password")
+
 func main() {
+	flag.Parse()
 	fmt.Println("This is the distribution server")
-	db, err := NewDB()
+	db, err := NewDB(*DBUsername, *DBPassword)
 	if err != nil {
 		log.Println(err)
 	}
@@ -119,6 +124,7 @@ func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) {
 	ws.SaveResult(work, res)
 	work.SetStatus("Work done", ws.db.session)
 	atomic.AddInt32(&work.PartOf().NumPartsDone, 1)
+	work.PartOf().Save(ws.db.session)
 }
 
 func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) {

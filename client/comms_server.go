@@ -105,6 +105,8 @@ func SericeHeartBeat(wr io.ReadWriter) {
 
 	for {
 		time.Sleep(time.Duration(*heartbeat) * time.Second)
-		writer.Encode(time.Now())
+		if writer.Encode(time.Now()) != nil {
+			return
+		}
 	}
 }

@@ -19,26 +19,44 @@ func NewUserMap(session *mgo.Session) *UserMap {
 }
 
 func (um *UserMap) addUser(u, p string) (*Hyades.Person, bool) {
+	log.Println("Add User", u, p)
 	Password, _ := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
-	user := Hyades.Person{Username: u, Password: Password}
-	n, err := um.session.DB("Admin").C("Users").Find(user).Count()
+
+	find := make(map[string]interface{})
+	find["username"] = u
+
+	n, err := um.session.DB("Hyades").C("Users").Find(find).Count()
 	if err != nil || n != 0 {
+		log.Println("Error, Already exists", err, n)
 		return nil, false
 	}
-	err = um.session.DB("Admin").C("Users").Insert(user)
+	user := Hyades.Person{Username: u, Password: Password}
+	err = um.session.DB("Hyades").C("Users").Insert(user)
+	log.Println("Inserted result", err, user)
 	if err != nil {
 		return nil, false
 	}
-	return &user, true
+	return um.findUser(u, p)
 }
 
 func (um *UserMap) findUser(u, p string) (*Hyades.Person, bool) {
-	Password, _ := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
-	user := Hyades.Person{Username: u, Password: Password}
-	log.Println(um, um.session)
-	err := um.session.DB("Admin").C("Users").Find(user).One(&user)
+	log.Println("find User", u, p)
+
+	user := Hyades.Person{}
+	find := make(map[string]interface{})
+	find["username"] = u
+
+	err := um.session.DB("Hyades").C("Users").Find(find).One(&user)
 	if err != nil {
+		log.Println("Cannot find ", find, " due to:", err)
 		return nil, false
 	}
-	return &user, true
+
+	if bcrypt.CompareHashAndPassword(user.Password, []byte(p)) == nil {
+
+		return &user, true
+	} else {
+
+		return &user, false
+	}
 }

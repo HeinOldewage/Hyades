@@ -4,26 +4,5 @@
 	<p>Time on Current Client:  <span id="clientTime"  >{{ .RunTime}}</span></p>
 	<p>Total Time on Clients:  <span id="totalTime" >{{ .TotalRunTime}}</span></p>
 	<p>Fail Count: <span id="failCount" >{{ .FailCount}}</span></p>
+	<p>Done: <span id="done" >{{ .Done}}</span></p>
 </div>
-
-
-<!--
-
-type Work struct {
-	PartOf * Job
-	PartID string
-	Env []byte
-	WindowsCommand string
-	LinuxCommand string
-	ReturnEnv bool
-	Status string
-	Done bool
-}
-
-type Job struct {
- Owner *Person
- JobID string
- Parts [] * Work
-}
-
--->

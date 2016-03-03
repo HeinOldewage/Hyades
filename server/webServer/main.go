@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 
 	"github.com/HeinOldewage/Hyades"
@@ -27,23 +28,30 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
+var dataPath *string = flag.String("dataFolder", "userData", "The folder that the distribution server saves the data")
+var serverAddress *string = flag.String("address", ":80", "The folder that the distribution server saves the data")
+var DBUsername *string = flag.String("DBUsername", "", "MongoDb username")
+var DBPassword *string = flag.String("DBPassword", "", "MongoDb password")
+
 func main() {
 	fmt.Println("This is the web server")
-	/*
-		http.Handle("/", http.FileServer(http.Dir("./resources")))
-		err := http.ListenAndServe(":80", nil)
-		if err != nil {
-			panic(err)
-		}*/
+	flag.PrintDefaults()
+	flag.Parse()
+	log.Println("dataPath", *dataPath)
+
 	session, err := mgo.Dial("127.0.0.1")
 	if err != nil {
 		log.Fatal(err)
 	}
-	submitServer := NewSubmitServer(":80", session)
+	log.Println("Logging into database Hyades", *DBUsername, *DBPassword)
+	err = session.DB("Hyades").Login(*DBUsername, *DBPassword)
+	if err != nil {
+		log.Fatal(err)
+	}
+	submitServer := NewSubmitServer(*serverAddress, session)
 	submitServer.Listen()
 }
 
-const dataPath string = "userData"
 const usersFileName string = "users.gob"
 
 type SubmitServer struct {
@@ -52,9 +60,8 @@ type SubmitServer struct {
 	Cookiestore    *sessions.CookieStore
 	sessionUserMap map[string]*Hyades.Person
 
-	jobs      *JobMap
-	users     *UserMap
-	observers *Hyades.ObserverList
+	jobs  *JobMap
+	users *UserMap
 }
 
 func NewSubmitServer(Address string, session *mgo.Session) *SubmitServer {
@@ -70,16 +77,11 @@ func NewSubmitServer(Address string, session *mgo.Session) *SubmitServer {
 		make(map[string]*Hyades.Person),
 		NewJobMap(session),
 		userMap,
-		Hyades.NewObserverList(),
 	}
 
 }
 
 func (ss *SubmitServer) Listen() {
-	/*http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println(r.URL.Path)
-		fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))
-	})*/
 
 	http.HandleFunc("/submit", ss.securePage(ss.submitJob))
 	http.HandleFunc("/stop", ss.securePage(ss.stopJob))
@@ -120,6 +122,8 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 		job := ss.Jobs().NewJob(user)
 
 		decodeError := json.NewDecoder(descrReader).Decode(job)
+		log.Println("Creating job for user with id", user.Id)
+		job.OwnerID = user.Id
 
 		if decodeError != nil {
 			http.Error(w, decodeError.Error(), http.StatusBadRequest)
@@ -352,7 +356,7 @@ func (ss *SubmitServer) createJob(user *Hyades.Person, w http.ResponseWriter, re
 func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req *http.Request) {
 	var fm template.FuncMap = make(template.FuncMap)
 
-	fm["IDToString"] = func(id string) string {
+	fm["IDToString"] = func(id bson.ObjectId) string {
 		data, err := bson.ObjectId(id).MarshalText()
 		log.Println("IDToString", bson.ObjectId(id))
 		if err != nil {
@@ -403,7 +407,7 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 		return
 	}
 
-	jobs, err := ss.jobs.GetAll()
+	jobs, err := ss.jobs.GetAll(user)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -428,7 +432,7 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 	}
 
 	var fm template.FuncMap = make(template.FuncMap)
-	fm["IDToString"] = func(id string) string {
+	fm["IDToString"] = func(id bson.ObjectId) string {
 		data, err := bson.ObjectId(id).MarshalText()
 		if err != nil {
 			log.Println("jobStatus_IDToString", err, id)
@@ -496,11 +500,12 @@ func (ss *SubmitServer) getJobResult(user *Hyades.Person, w http.ResponseWriter,
 	}
 
 	job, _ := ss.jobs.GetJob(id[0])
-
-	TempJobFolder := filepath.Join("userData", job.JobFolder, job.Id)
+	log.Println(*dataPath)
+	idtext, _ := job.Id.MarshalText()
+	TempJobFolder := filepath.Join(*dataPath, job.JobFolder, string(idtext))
 	retEnv := Hyades.ZipCompressFolder(TempJobFolder)
 	log.Println(TempJobFolder, "getJobResult bytes:", len(retEnv))
-	http.ServeContent(w, req, "Job"+job.Id+".zip", time.Now(), bytes.NewReader(retEnv))
+	http.ServeContent(w, req, "Job"+string(idtext)+".zip", time.Now(), bytes.NewReader(retEnv))
 
 }
 

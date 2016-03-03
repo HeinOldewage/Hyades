@@ -71,13 +71,13 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 
 	for {
 		work := c.Owner.getWork()
+		log.Println("got work from job", work.PartOf().Id.String())
 		c.Work = work
 
 		work.SetStatus("Sending work to client "+c.ClientInfo.ComputerName, c.Owner.db.session)
 		work.Dispatch(c.ClientInfo, c.Owner.db.session)
 
 		comms := work.PartOf().CreateWorkComms(work)
-		log.Println(comms)
 		err := writer.Encode(comms)
 		if err != nil {
 			c.FrameWorkError(err)
@@ -109,7 +109,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		if err != nil {
 			log.Println("Saving work failed", err)
 		} else {
-			log.Println("Saved work", work)
+			log.Println("Saved work", work.Command, work.Parameters)
 		}
 	}
 }

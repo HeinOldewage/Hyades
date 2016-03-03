@@ -32,16 +32,4 @@
 					}
 				});
 			}
-
-		Observe('Jobs/Jobs*{{.Id}}/WorkObservers',function(list) {
-			for (i = 0 ; i < list.length ; i++){
-				event = list[i];
-				div = document.getElementById(event.PartID);
-				$(jq(event.PartID)).find("#status").html(event.Status)
-				$(jq(event.PartID)).find("#clientTime").html(event.RunTime)
-				$(jq(event.PartID)).find("#totalTime").html(event.TotalRunTime)
-				$(jq(event.PartID)).find("#failCount").html(event.FailCount)
-				
-			}
-		});
 </script>

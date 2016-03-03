@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"log"
 	"time"
 
 	"gopkg.in/mgo.v2"
@@ -14,10 +15,10 @@ import (
  All work is linked to a Job
 */
 type Job struct {
-	OwnerID      string  `bson :"omitempty"`
-	Id           string  `json:"id" bson:"_id,omitempty"`
-	Parts        []*Work `bson :"omitempty"`
-	NumPartsDone int32   `bson :"omitempty"`
+	OwnerID      bson.ObjectId `bson :"omitempty"`
+	Id           bson.ObjectId `json:"id" bson:"_id,omitempty"`
+	Parts        []*Work       `bson :"omitempty"`
+	NumPartsDone int32         `bson :"omitempty"`
 
 	JobFolder string `bson :"omitempty"`
 	//A friendly name to used in displays
@@ -35,7 +36,7 @@ func (j *Job) AddWork(w *Work) {
 
 func NewJob(OwnerID string, JobID string, Parts []*Work, NumPartsDone int32, Env []byte) *Job {
 	res := &Job{
-		OwnerID:       OwnerID,
+		OwnerID:       bson.ObjectId(OwnerID),
 		Parts:         Parts,
 		NumPartsDone:  NumPartsDone,
 		Env:           Env,
@@ -49,7 +50,7 @@ A Work struct gives the Environment the Command must be executed and specifies w
 */
 type Work struct {
 	partOf *Job
-	PartID string `json:"id" bson:"_id,omitempty"`
+	PartID bson.ObjectId `json:"id" bson:"_id,omitempty"`
 
 	DispatchTime        time.Time
 	FinishTime          time.Time
@@ -59,8 +60,8 @@ type Work struct {
 	CurrentClient *ClientInfo
 	Done          bool
 	Dispatched    bool
-	failCount     int
-	status        string
+	FailCount     int
+	Status        string
 
 	Command    string
 	Parameters string
@@ -81,11 +82,11 @@ type WorkComms struct {
 func NewWork(partOf *Job, partId string, Cmd string) *Work {
 	work := &Work{
 		partOf:    partOf,
-		PartID:    partId,
+		PartID:    bson.ObjectId(partId),
 		Command:   Cmd,
-		failCount: 0,
+		FailCount: 0,
 		Done:      false,
-		status:    "",
+		Status:    "",
 	}
 	partOf.Parts = append(partOf.Parts, work)
 
@@ -95,14 +96,16 @@ func NewWork(partOf *Job, partId string, Cmd string) *Work {
 func (w *Work) Dispatch(ci *ClientInfo, session *mgo.Session) {
 	w.DispatchTime = time.Now()
 	w.CurrentClient = ci
+	w.Dispatched = true
 	w.Save(session)
 }
 
 func (w *Work) Failed(session *mgo.Session) {
 	w.FinishTime = time.Now()
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
-	w.failCount++
+	w.FailCount++
 	w.CurrentClient = nil
+	w.Dispatched = false
 	w.Save(session)
 }
 
@@ -110,13 +113,15 @@ func (w *Work) Succeeded(session *mgo.Session) {
 	w.FinishTime = time.Now()
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.Done = true
+	w.Dispatched = false
 	w.CompletedBy = w.CurrentClient
 	w.CurrentClient = nil
 	w.Save(session)
 }
 
 func (w *Work) SetStatus(status string, session *mgo.Session) {
-	w.status = status
+	w.Status = status
+	log.Println("Setting status", status)
 	w.Save(session)
 }
 
@@ -137,10 +142,6 @@ func (w *Work) IsDone() bool {
 	return w.Done
 }
 
-func (w *Work) Status() string {
-	return w.status
-}
-
 func (w *Work) RunTime() time.Duration {
 	if w.DispatchTime.After(w.FinishTime) { //The work is actively being done by a client
 		return time.Since(w.DispatchTime)
@@ -157,17 +158,13 @@ func (w *Work) TotalRunTime() time.Duration {
 	}
 }
 
-func (w *Work) FailCount() int {
-	return w.failCount
-}
-
 func (w *Work) MarshalJSON() ([]byte, error) {
 	m := make(map[string]interface{})
 	m["PartID"] = w.PartID
-	m["Status"] = w.Status()
+	m["Status"] = w.Status
 	m["RunTime"] = w.RunTime().String()
 	m["TotalRunTime"] = w.TotalRunTime().String()
-	m["FailCount"] = w.FailCount()
+	m["FailCount"] = w.FailCount
 	b, e := json.Marshal(m)
 	return b, e
 }
@@ -176,7 +173,10 @@ func (w *Work) Save(session *mgo.Session) error {
 
 	query := bson.M{"_id": bson.ObjectId(w.PartOf().Id), "parts.command": w.Command, "parts.parameters": w.Parameters}
 	UpdateTo := bson.M{"$set": bson.M{"parts.$": *w}}
-	err := session.DB("Admin").C("Jobs").Update(query, UpdateTo)
+	err := session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
+	if err != nil {
+		log.Fatal(err)
+	}
 	return err
 }
 
@@ -218,6 +218,17 @@ func (j *Job) Setup() {
 	for _, w := range j.Parts {
 		w.partOf = j
 	}
+}
+
+func (j *Job) Save(session *mgo.Session) error {
+	log.Println("Saving job", j)
+	query := bson.M{"_id": bson.ObjectId(j.Id)}
+	UpdateTo := j
+	err := session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
+	if err != nil {
+		panic(err)
+	}
+	return err
 }
 
 func (j *Job) CreateWorkComms(w *Work) *WorkComms {

@@ -22,13 +22,15 @@ func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
 	jobIn := make(map[string]interface{})
 	jobIn["_id"] = bson.ObjectId(id)
 	job = new(Hyades.Job)
-	err = jm.session.DB("Admin").C("Jobs").Find(&jobIn).One(job)
+	err = jm.session.DB("Hyades").C("Jobs").Find(&jobIn).One(job)
 
 	return job, err
 }
 
-func (jm *JobMap) GetAll() (jobs []*Hyades.Job, err error) {
-	iterator := jm.session.DB("Admin").C("Jobs").Find(nil).Iter()
+func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
+	find := make(map[string]interface{})
+	find["ownerid"] = user.Id
+	iterator := jm.session.DB("Hyades").C("Jobs").Find(find).Iter()
 	var job Hyades.Job
 	for iterator.Next(&job) {
 		jobs = append(jobs, &job)
@@ -38,5 +40,5 @@ func (jm *JobMap) GetAll() (jobs []*Hyades.Job, err error) {
 }
 
 func (jm *JobMap) AddJob(job *Hyades.Job) error {
-	return jm.session.DB("Admin").C("Jobs").Insert(job)
+	return jm.session.DB("Hyades").C("Jobs").Insert(job)
 }

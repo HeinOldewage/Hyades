@@ -118,9 +118,15 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 
 	stdBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
+
+	err = os.Chmod(filepath.Join(TempJobFolder, work.Parts.Command), os.ModePerm)
+	if err != nil {
+		log.Println("Chmod", err)
+	}
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "linux" {
-		log.Println("Setting up the linux ccommand", work)
+		log.Println("Setting up the linux ccommand", work.Parts.Command, work.Parts.Parameters)
 		cmd = exec.Command(work.Parts.Command, work.Parts.Parameters)
 	} else {
 		log.Println("Setting up the windows ccommand")

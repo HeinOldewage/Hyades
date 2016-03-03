@@ -14,9 +14,14 @@ type DB struct {
 	session *mgo.Session
 }
 
-func NewDB() (*DB, error) {
+func NewDB(username, pasword string) (*DB, error) {
 	session, err := mgo.Dial("127.0.0.1")
 	if err != nil {
+		return nil, err
+	}
+	err = session.DB("Hyades").Login(username, pasword)
+	if err != nil {
+		log.Println("Could not login")
 		return nil, err
 	}
 	return &DB{session}, nil
@@ -25,19 +30,19 @@ func NewDB() (*DB, error) {
 func (db *DB) GetNextJob() *Hyades.Work {
 
 	for {
-		//query := []bson.M{{"$unwind": "$parts"}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}}
-		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}}
-		iterator := db.session.DB("Admin").C("Jobs").Pipe(query).Iter()
+		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}, {"$match": bson.M{"parts.dispatched": false}}}
+		iterator := db.session.DB("Hyades").C("Jobs").Pipe(query).Iter()
 
 		var res map[string]interface{} = make(map[string]interface{})
 		//var res Hyades.WorkComms
 		for iterator.Next(&res) {
 			var job Hyades.Job
-			err := db.session.DB("Admin").C("Jobs").FindId(res["_id"].(bson.ObjectId)).One(&job)
+			err := db.session.DB("Hyades").C("Jobs").FindId(res["_id"].(bson.ObjectId)).One(&job)
 			if err != nil {
 				log.Println("GetNextJob", err)
 				continue
 			}
+			log.Println("Returning job with ID", res["_id"].(bson.ObjectId), job.Id)
 			job.Setup()
 			return job.Parts[res["index"].(int64)]
 		}
@@ -51,19 +56,20 @@ func (db *DB) GetNextJob() *Hyades.Work {
 }
 
 func (db *DB) SaveWork(work *Hyades.Work) error {
-
 	return work.Save(db.session)
 }
 
 func init() {
+	return
 	session, err := mgo.Dial("127.0.0.1")
 	if err != nil {
 		return
 	}
-	session.DB("Admin").DropDatabase()
-	session.DB("Admin").C("Jobs").DropCollection()
-	session.DB("Admin").C("Users").DropCollection()
-	return
+
+	session.DB("Hyades").DropDatabase()
+	session.DB("Hyades").C("Jobs").DropCollection()
+	session.DB("Hyades").C("Users").DropCollection()
+
 	dbnames, _ := session.DatabaseNames()
 	for _, name := range dbnames {
 		if name == "Admin" {
@@ -71,31 +77,31 @@ func init() {
 			return
 		}
 	}
-	session.DB("Admin").DropDatabase()
-	session.DB("Admin").C("Jobs").DropCollection()
-	session.DB("Admin").C("Users").DropCollection()
+	session.DB("Hyades").DropDatabase()
+	session.DB("Hyades").C("Jobs").DropCollection()
+	session.DB("Hyades").C("Users").DropCollection()
 
 	user := &Hyades.Person{Username: "Test"}
 
-	session.DB("Admin").C("Users").Insert(user)
-	err = session.DB("Admin").C("Users").Find(user).One(user)
+	session.DB("Hyades").C("Users").Insert(user)
+	err = session.DB("Hyades").C("Users").Find(user).One(user)
 	if err != nil {
 		log.Println(err)
 	}
 
 	toInsertJob := &Hyades.Job{}
 
-	toInsertJob.OwnerID = user.Id
+	toInsertJob.OwnerID = bson.ObjectId(user.Id)
 	Hyades.NewWork(toInsertJob, "1", "echo 'test'")
 	Hyades.NewWork(toInsertJob, "2", "echo 'hello'")
 	Hyades.NewWork(toInsertJob, "3", "echo 'world'").Done = true
 
-	err = session.DB("Admin").C("Jobs").Insert(toInsertJob)
+	err = session.DB("Hyades").C("Jobs").Insert(toInsertJob)
 	if err != nil {
 		log.Println("Insert Error:", err)
 	}
 
-	iterator := session.DB("Admin").C("Jobs").Find(nil).Iter()
+	iterator := session.DB("Hyades").C("Jobs").Find(nil).Iter()
 
 	var res map[string]interface{} = make(map[string]interface{})
 	//var res User
