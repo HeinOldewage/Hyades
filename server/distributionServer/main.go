@@ -113,9 +113,9 @@ func (ws *WorkServer) getWork() *Hyades.Work {
 	return ws.db.GetNextJob()
 }
 
-func (ws *WorkServer) retryWork(work *Hyades.Work) {
+func (ws *WorkServer) retryWork(work *Hyades.Work, err string) {
 	work.Failed(ws.db.session)
-	work.SetStatus("In Queue after error", ws.db.session)
+	work.SetStatus("In Queue after error"+err, ws.db.session)
 }
 
 func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) {

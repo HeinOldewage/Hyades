@@ -65,7 +65,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 	defer func() {
 		if c.Work != nil {
 			work := c.clearWork()
-			c.Owner.retryWork(work)
+			c.Owner.retryWork(work, "ServiceWork loop ended")
 		}
 	}()
 
@@ -100,7 +100,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 			c.Owner.doneWork(work, res)
 			c.Owner.Stats.DonePart(c.ClientInfo)
 		} else {
-			c.Owner.retryWork(work)
+			c.Owner.retryWork(work, res.Error)
 			c.Owner.Log.Println("Client ", c.ClientInfo.ComputerName, "(", c.ClientInfo.OperatingSystem, ") terminated simulation with error:", res.Error)
 			c.Owner.Stats.JobError()
 		}
