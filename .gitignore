@@ -26,3 +26,6 @@ _testmain.go
 client/client
 server/webServer/webServer
 server/distributionServer/distributionServer
+client/Env
+server/distributionServer/log.txt
+server/distributionServer/userData

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -15,20 +17,48 @@ import (
 	"github.com/HeinOldewage/Hyades"
 )
 
-var DBUsername *string = flag.String("DBUsername", "", "MongoDb username")
-var DBPassword *string = flag.String("DBPassword", "", "MongoDb password")
+type ConfigFile struct {
+	DataPath   *string
+	DBUsername *string
+	DBPassword *string
+}
+
+var configFilePath *string = flag.String("config", "", "If the config file is specified it overrides command line paramters and defaults")
+
+var configuration ConfigFile = ConfigFile{
+	DataPath:   flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
+	DBUsername: flag.String("DBUsername", "", "MongoDb username"),
+	DBPassword: flag.String("DBPassword", "", "MongoDb password"),
+}
 
 func main() {
-	flag.Parse()
 	fmt.Println("This is the distribution server")
-	db, err := NewDB(*DBUsername, *DBPassword)
+	flag.Parse()
+
+	if *configFilePath != "" {
+		file, err := os.Open(*configFilePath)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		decoder := json.NewDecoder(file)
+		err = decoder.Decode(&configuration)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}
+	log.Println("config", configuration)
+
+	db, err := NewDB(*configuration.DBUsername, *configuration.DBPassword)
 	if err != nil {
 		log.Println(err)
 	}
 	fmt.Println("Connected to DB")
 	//log.Println("Job:", db.GetNextJob())
 
-	ws := NewWorkServer(":8080", db)
+	ws := NewWorkServer(":8080", db, *configuration.DataPath)
 
 	ws.Listen()
 }
@@ -56,11 +86,12 @@ type WorkServer struct {
 
 	db *DB
 
-	Log   *log.Logger
-	Stats *workServerStats
+	Log      *log.Logger
+	Stats    *workServerStats
+	dataPath string
 }
 
-func NewWorkServer(address string, db *DB) *WorkServer {
+func NewWorkServer(address string, db *DB, dataPath string) *WorkServer {
 	logFile, err := os.OpenFile("log.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalln("Failed to open log file", ":", err)
@@ -73,9 +104,9 @@ func NewWorkServer(address string, db *DB) *WorkServer {
 		db,
 		Log,
 		&workServerStats{ClientTimes: make([]time.Duration, 0), ConnectedClient: make(map[string]*clientStats)},
+		dataPath,
 	}
 	Log.Println("Work server successfully created")
-	log.Println("Do you see this?")
 	return res
 }
 
@@ -118,16 +149,20 @@ func (ws *WorkServer) retryWork(work *Hyades.Work) {
 	work.SetStatus("In Queue after error", ws.db.session)
 }
 
-func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) {
+func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) error {
 	work.Succeeded(ws.db.session)
 	work.SetStatus("Saving work", ws.db.session)
-	ws.SaveResult(work, res)
+	err := ws.SaveResult(work, res)
+	if err != nil {
+		return err
+	}
 	work.SetStatus("Work done", ws.db.session)
 	atomic.AddInt32(&work.PartOf().NumPartsDone, 1)
 	work.PartOf().Save(ws.db.session)
+	return nil
 }
 
-func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) {
+func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) error {
 	//Get Job work was part of, Get person Job belonged to and then save under
 	//Person.JobFolder\Job.JobID\Work.partID\
 
@@ -136,15 +171,20 @@ func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) {
 	//StdOut.txt
 	//ErrOut.txtlogFile
 
-	folder := filepath.Join("userData", w.PartOf().JobFolder, w.PartOf().Name, strconv.Itoa(w.Index()))
+	folder := filepath.Join(ws.dataPath, w.PartOf().JobFolder, w.PartOf().Name, strconv.Itoa(w.Index()))
 	os.MkdirAll(folder, os.ModeDir|os.ModePerm)
-	if len(res.Env) > 0 {
+	if res.EnvLength > 0 {
 		envfile, err := os.Create(filepath.Join(folder, "Env.zip"))
 		if err != nil {
 			ws.Log.Println(err)
 		}
 		defer envfile.Close()
-		envfile.Write(res.Env)
+		_, err = io.CopyN(envfile, res.GetEnv(), int64(res.EnvLength))
+		if err != nil {
+			ws.Log.Println(err)
+			log.Println(err)
+			return err
+		}
 	}
 
 	stdout, err := os.Create(filepath.Join(folder, "StdOut.txt"))
@@ -160,6 +200,8 @@ func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) {
 	}
 	defer errout.Close()
 	errout.Write(res.ErrOutStream)
+
+	return nil
 }
 
 func (wss *workServerStats) Connected() {

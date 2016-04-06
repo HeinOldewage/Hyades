@@ -38,8 +38,12 @@ func addtozip(z *zip.Writer, name string, f *os.File) {
 
 func ZipCompressFolder(folder string) []byte {
 	envfile := new(bytes.Buffer)
+	ZipCompressFolderWriter(folder, envfile)
+	return envfile.Bytes()
+}
 
-	zipper := zip.NewWriter(envfile)
+func ZipCompressFolderWriter(folder string, writer io.Writer) {
+	zipper := zip.NewWriter(writer)
 
 	scan, err := os.Open(folder)
 	if err != nil {
@@ -60,5 +64,4 @@ func ZipCompressFolder(folder string) []byte {
 	//addtozip(zipper,folder,scan)
 
 	zipper.Close()
-	return envfile.Bytes()
 }

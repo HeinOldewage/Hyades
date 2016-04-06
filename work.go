@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"io"
 	"log"
 	"time"
 
@@ -20,7 +21,7 @@ type Job struct {
 	Parts        []*Work       `bson :"omitempty"`
 	NumPartsDone int32         `bson :"omitempty"`
 
-	JobFolder string `bson :"omitempty"`
+	JobFolder string
 	//A friendly name to used in displays
 	Name string
 
@@ -60,6 +61,7 @@ type Work struct {
 	CurrentClient *ClientInfo
 	Done          bool
 	Dispatched    bool
+	BeingHandled  bool
 	FailCount     int
 	Status        string
 
@@ -106,6 +108,7 @@ func (w *Work) Failed(session *mgo.Session) {
 	w.FailCount++
 	w.CurrentClient = nil
 	w.Dispatched = false
+	w.BeingHandled = false
 	w.Save(session)
 }
 
@@ -114,6 +117,7 @@ func (w *Work) Succeeded(session *mgo.Session) {
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.Done = true
 	w.Dispatched = false
+	w.BeingHandled = false
 	w.CompletedBy = w.CurrentClient
 	w.CurrentClient = nil
 	w.Save(session)
@@ -221,7 +225,7 @@ func (j *Job) Setup() {
 }
 
 func (j *Job) Save(session *mgo.Session) error {
-	log.Println("Saving job", j)
+	log.Println("Saving job", j.Name)
 	query := bson.M{"_id": bson.ObjectId(j.Id)}
 	UpdateTo := j
 	err := session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
@@ -271,11 +275,20 @@ func (j *Job) UnmarshalBinary(data []byte) error {
 The result of a doing Work
 */
 type WorkResult struct {
-	Env          []byte
+	EnvLength    int
+	env          io.ReadWriteCloser
 	StdOutStream []byte
 	ErrOutStream []byte
 	Error        string
 	Done         int32
+}
+
+func (wr *WorkResult) SetEnv(env io.ReadWriteCloser) {
+	wr.env = env
+}
+
+func (wr *WorkResult) GetEnv() io.ReadWriteCloser {
+	return wr.env
 }
 
 type ClientInfo struct {

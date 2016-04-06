@@ -30,7 +30,7 @@ const (
 var ServerAddress0 *string = flag.String("ServerAddress", "0.0.0.0:55555", "The server to get Jobs from")
 var ServerAddress1 *string = flag.String("ServerAddress1", "1.1.1.1:55555", "The backup server to get Jobs from")
 var logFile *string = flag.String("log", "", "The File to log to, if blank logging is done to stdout")
-var retryTime *int = flag.Int("retry", 120, "The client will attempt to connect to the server approximately every so many seconds")
+var retryTime *int = flag.Int("retry", 60, "The client will attempt to connect to the server approximately every so many seconds")
 var jiggleTime *int = flag.Int("jiggle", 5, "The upper bound for the random interval by which retry time is offset")
 var heartbeat *int = flag.Int("heartbeat", 120, "Time interval (in minutes) that the heartbeat will be sent")
 
@@ -76,8 +76,15 @@ func main() {
 
 }
 
+type nopCloser struct {
+	io.Reader
+	io.Writer
+}
+
+func (nopCloser) Close() error { return nil }
+
 func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
-	res := &Hyades.WorkResult{make([]byte, 0), make([]byte, 0), make([]byte, 0), "", 0}
+	res := &Hyades.WorkResult{EnvLength: 0, StdOutStream: make([]byte, 0), ErrOutStream: make([]byte, 0), Error: "", Done: 0}
 	TempJobFolder := filepath.Join("Env", "Temp")
 	log.Println("Making folder:[", TempJobFolder, "]")
 
@@ -88,7 +95,7 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 		resChan <- res
 		return
 	}
-	//defer os.RemoveAll(TempJobFolder)
+	defer os.RemoveAll(TempJobFolder)
 
 	envreader := bytes.NewReader(work.Env)
 	unzipper, err := zip.NewReader(envreader, int64(len(work.Env)))
@@ -175,14 +182,41 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 			}
 		}
 	}
+	var tempWriter io.ReadWriteCloser
+	var Bufferlength func() int
+	tempFile, err := os.Create("temp.zip")
+	if err == nil {
+		tempWriter = tempFile
 
-	var retEnv []byte
-	if work.ReturnEnv {
-		retEnv = Hyades.ZipCompressFolder(TempJobFolder)
+		Bufferlength = func() int {
+			s, err := tempFile.Stat()
+			if err != nil {
+				panic(err)
+			}
+			return int(s.Size())
+		}
+
+	} else {
+		log.Println("Could not keep zip on disk, trying to use memory")
+		buffer := &bytes.Buffer{}
+		Bufferlength = func() int { return int(buffer.Len()) }
+		tempWriter = nopCloser{buffer, buffer}
 	}
 
-	res.Env = retEnv
+	if work.ReturnEnv {
+		Hyades.ZipCompressFolderWriter(TempJobFolder, tempWriter)
+	}
+
+	if tempFile != nil {
+		tempFile.Seek(0, 0)
+	}
+
+	res.SetEnv(tempWriter)
+	res.EnvLength = Bufferlength()
 	res.StdOutStream = stdBuf.Bytes()
 	res.ErrOutStream = errBuf.Bytes()
+
+	log.Println("Did work:", res)
+
 	resChan <- res
 }

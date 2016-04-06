@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/HeinOldewage/Hyades"
 	//"github.com/gorilla/context"
@@ -28,27 +29,55 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
-var dataPath *string = flag.String("dataFolder", "userData", "The folder that the distribution server saves the data")
-var serverAddress *string = flag.String("address", ":80", "The folder that the distribution server saves the data")
-var DBUsername *string = flag.String("DBUsername", "", "MongoDb username")
-var DBPassword *string = flag.String("DBPassword", "", "MongoDb password")
+type ConfigFile struct {
+	DataPath      *string
+	ServerAddress *string
+	DBUsername    *string
+	DBPassword    *string
+}
+
+var configFilePath *string = flag.String("config", "", "If the config file is specified it overrides command line paramters and defaults")
+
+var configuration ConfigFile = ConfigFile{
+	DataPath:      flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
+	ServerAddress: flag.String("address", ":80", "The folder that the distribution server saves the data"),
+	DBUsername:    flag.String("DBUsername", "", "MongoDb username"),
+	DBPassword:    flag.String("DBPassword", "", "MongoDb password"),
+}
 
 func main() {
 	fmt.Println("This is the web server")
-	flag.PrintDefaults()
 	flag.Parse()
-	log.Println("dataPath", *dataPath)
+
+	if *configFilePath != "" {
+		fmt.Println("Loading config file", *configFilePath)
+		file, err := os.Open(*configFilePath)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		decoder := json.NewDecoder(file)
+		err = decoder.Decode(&configuration)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}
+
+	log.Println("config", *configuration.DataPath, *configuration.DBPassword, *configuration.DBUsername, *configuration.ServerAddress)
 
 	session, err := mgo.Dial("127.0.0.1")
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("Logging into database Hyades", *DBUsername, *DBPassword)
-	err = session.DB("Hyades").Login(*DBUsername, *DBPassword)
+	log.Println("Logging into database Hyades", *configuration.DBUsername, *configuration.DBPassword)
+	err = session.DB("Hyades").Login(*configuration.DBUsername, *configuration.DBPassword)
 	if err != nil {
 		log.Fatal(err)
 	}
-	submitServer := NewSubmitServer(*serverAddress, session)
+	log.Println("Starting web server on ", *configuration.ServerAddress)
+	submitServer := NewSubmitServer(*configuration.ServerAddress, session)
 	submitServer.Listen()
 }
 
@@ -122,11 +151,13 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 		job := ss.Jobs().NewJob(user)
 
 		decodeError := json.NewDecoder(descrReader).Decode(job)
-		log.Println("Creating job for user with id", user.Id)
+		log.Println("Creating job for user with id", user.Id, " And name", user.Username)
 		job.OwnerID = user.Id
+		job.JobFolder = user.Username
 
 		if decodeError != nil {
 			http.Error(w, decodeError.Error(), http.StatusBadRequest)
+			return
 		}
 
 		job.Env = envBytes
@@ -499,13 +530,23 @@ func (ss *SubmitServer) getJobResult(user *Hyades.Person, w http.ResponseWriter,
 		return
 	}
 
-	job, _ := ss.jobs.GetJob(id[0])
-	log.Println(*dataPath)
-	idtext, _ := job.Id.MarshalText()
-	TempJobFolder := filepath.Join(*dataPath, job.JobFolder, string(idtext))
+	var bsonID bson.ObjectId
+	bsonID.UnmarshalText([]byte(id[0]))
+	job, err := ss.jobs.GetJob(string(bsonID))
+	if err != nil {
+		log.Println("id[0]", id[0])
+		log.Println("getJobResult - ss.jobs.GetJob", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Println("job.JobFolder", job.JobFolder)
+	log.Println("user.Username", user.Username)
+
+	TempJobFolder := filepath.Join(*configuration.DataPath, job.JobFolder, job.Name)
+	//folder	  := filepath.Join(*dataPath, job.JobFolder, job.Name, strconv.Itoa(w.Index()))
 	retEnv := Hyades.ZipCompressFolder(TempJobFolder)
 	log.Println(TempJobFolder, "getJobResult bytes:", len(retEnv))
-	http.ServeContent(w, req, "Job"+string(idtext)+".zip", time.Now(), bytes.NewReader(retEnv))
+	http.ServeContent(w, req, "Job"+job.Name+".zip", time.Now(), bytes.NewReader(retEnv))
 
 }
 

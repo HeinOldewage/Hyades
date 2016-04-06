@@ -1,0 +1,6 @@
+{
+"dataPath" : ".",
+"serverAddress": ":8088" ,
+"DBUsername" : "HyadesUser",
+"DBPassword" : "h5813x"
+}

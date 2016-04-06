@@ -91,9 +91,15 @@ func ServiceWork(wr io.ReadWriter) {
 		res := <-workResults
 		log.Printf("DoWork done %T %v \n", res, res)
 		err = writer.Encode(res)
-
 		if err != nil {
 			log.Println("ServiceWork Encode", err)
+			return
+		}
+		defer res.GetEnv().Close()
+		_, err = io.CopyN(wr, res.GetEnv(), int64(res.EnvLength))
+
+		if err != nil {
+			log.Println("ServiceWork CopyN", err)
 			return
 		}
 		log.Println("ServiceWork sent back")

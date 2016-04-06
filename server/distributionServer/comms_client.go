@@ -58,6 +58,17 @@ func (c *Client) handle(conn net.Conn, ws *WorkServer) {
 
 }
 
+type nopCloser struct {
+	io.Reader
+	io.Writer
+}
+
+func NopCloser(rw io.ReadWriter) *nopCloser {
+	return &nopCloser{rw, rw}
+}
+
+func (nopCloser) Close() error { return nil }
+
 func (c *Client) ServiceWork(wr io.ReadWriter) {
 	reader := gob.NewDecoder(wr)
 	writer := gob.NewEncoder(wr)
@@ -93,6 +104,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 			c.FrameWorkError(err)
 			return
 		}
+		res.SetEnv(NopCloser(wr))
 
 		c.clearWork()
 

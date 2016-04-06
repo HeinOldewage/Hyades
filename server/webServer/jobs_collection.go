@@ -31,9 +31,10 @@ func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
 	find := make(map[string]interface{})
 	find["ownerid"] = user.Id
 	iterator := jm.session.DB("Hyades").C("Jobs").Find(find).Iter()
-	var job Hyades.Job
-	for iterator.Next(&job) {
-		jobs = append(jobs, &job)
+	var job *Hyades.Job = new(Hyades.Job)
+	for iterator.Next(job) {
+		jobs = append(jobs, job)
+		job = new(Hyades.Job)
 	}
 
 	return jobs, iterator.Err()

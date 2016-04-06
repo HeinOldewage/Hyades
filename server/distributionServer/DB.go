@@ -2,9 +2,12 @@ package main
 
 import (
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/HeinOldewage/Hyades"
+
+	"sync"
 
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -12,6 +15,7 @@ import (
 
 type DB struct {
 	session *mgo.Session
+	lock    sync.Mutex
 }
 
 func NewDB(username, pasword string) (*DB, error) {
@@ -24,22 +28,31 @@ func NewDB(username, pasword string) (*DB, error) {
 		log.Println("Could not login")
 		return nil, err
 	}
-	return &DB{session}, nil
+	return &DB{session: session}, nil
 }
 
 func (db *DB) GetNextJob() *Hyades.Work {
-
+	db.lock.Lock()
+	defer db.lock.Unlock()
 	for {
-		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}, {"$match": bson.M{"parts.dispatched": false}}}
+		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.beinghandled": false}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}}
 		iterator := db.session.DB("Hyades").C("Jobs").Pipe(query).Iter()
 
 		var res map[string]interface{} = make(map[string]interface{})
 		//var res Hyades.WorkComms
 		for iterator.Next(&res) {
-			var job Hyades.Job
-			err := db.session.DB("Hyades").C("Jobs").FindId(res["_id"].(bson.ObjectId)).One(&job)
+			log.Println(res["parts"])
+			//Set to being handled
+			updater := bson.M{"$set": bson.M{"parts." + strconv.FormatInt(res["index"].(int64), 10) + ".beinghandled": true}}
+			err := db.session.DB("Hyades").C("Jobs").UpdateId(res["_id"].(bson.ObjectId), updater)
 			if err != nil {
-				log.Println("GetNextJob", err)
+				log.Println("GetNextJob Update", err)
+				continue
+			}
+			var job Hyades.Job
+			err = db.session.DB("Hyades").C("Jobs").FindId(res["_id"].(bson.ObjectId)).One(&job)
+			if err != nil {
+				log.Println("GetNextJob select", err)
 				continue
 			}
 			log.Println("Returning job with ID", res["_id"].(bson.ObjectId), job.Id)
