@@ -63,6 +63,7 @@ type Work struct {
 	Dispatched    bool
 	BeingHandled  bool
 	FailCount     int
+	Error         string
 	Status        string
 
 	Command    string

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -84,7 +85,15 @@ type nopCloser struct {
 func (nopCloser) Close() error { return nil }
 
 func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
+
 	res := &Hyades.WorkResult{EnvLength: 0, StdOutStream: make([]byte, 0), ErrOutStream: make([]byte, 0), Error: "", Done: 0}
+
+	defer func() {
+		if err := recover(); err != nil {
+			res.Error = fmt.Sprint(err)
+		}
+		resChan <- res
+	}()
 	TempJobFolder := filepath.Join("Env", "Temp")
 	log.Println("Making folder:[", TempJobFolder, "]")
 
@@ -92,7 +101,7 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	if err != nil {
 		log.Println("Error creating folder:", err)
 		res.Error = err.Error()
-		resChan <- res
+
 		return
 	}
 	defer os.RemoveAll(TempJobFolder)
@@ -103,7 +112,6 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	if err != nil {
 		log.Println("Error zip.NewReader:", err)
 		res.Error = err.Error()
-		resChan <- res
 		return
 	}
 
@@ -115,7 +123,6 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 		if err != nil {
 			log.Println("Error reading zip:", err)
 			res.Error = err.Error()
-			resChan <- res
 			return
 		}
 		io.Copy(outfile, zf)
@@ -151,7 +158,6 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	if err != nil {
 		log.Println("Error running command:", err)
 		res.Error = err.Error()
-		resChan <- res
 		return
 	}
 	cmd.StdoutPipe()
@@ -215,8 +221,6 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	res.EnvLength = Bufferlength()
 	res.StdOutStream = stdBuf.Bytes()
 	res.ErrOutStream = errBuf.Bytes()
-
 	log.Println("Did work:", res)
 
-	resChan <- res
 }
