@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/gob"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -76,7 +77,11 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 	defer func() {
 		if c.Work != nil {
 			work := c.clearWork()
-			c.Owner.retryWork(work, "ServiceWork loop ended")
+			var err string
+			if e := recover(); e != nil {
+				err = fmt.Sprint(e)
+			}
+			c.Owner.retryWork(work, "ServiceWork loop ended "+err)
 		}
 	}()
 
@@ -91,6 +96,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		comms := work.PartOf().CreateWorkComms(work)
 		err := writer.Encode(comms)
 		if err != nil {
+			log.Println("ServiceWork writer.Encode(comms) error", err)
 			c.FrameWorkError(err)
 			return
 		}
@@ -113,6 +119,8 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 			c.Owner.Stats.DonePart(c.ClientInfo)
 		} else {
 			c.Owner.retryWork(work, res.Error)
+			log.Println(res.ErrOutStream)
+			log.Println(res.StdOutStream)
 			c.Owner.Log.Println("Client ", c.ClientInfo.ComputerName, "(", c.ClientInfo.OperatingSystem, ") terminated simulation with error:", res.Error)
 			c.Owner.Stats.JobError()
 		}

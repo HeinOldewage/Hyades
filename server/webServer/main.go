@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -21,7 +20,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -36,11 +34,11 @@ type ConfigFile struct {
 	DBPassword    *string
 }
 
-var configFilePath *string = flag.String("config", "", "If the config file is specified it overrides command line paramters and defaults")
+var configFilePath *string = flag.String("config", "config.json", "If the config file is specified it overrides command line paramters and defaults")
 
 var configuration ConfigFile = ConfigFile{
 	DataPath:      flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
-	ServerAddress: flag.String("address", ":80", "The folder that the distribution server saves the data"),
+	ServerAddress: flag.String("address", ":8088", "The folder that the distribution server saves the data"),
 	DBUsername:    flag.String("DBUsername", "", "MongoDb username"),
 	DBPassword:    flag.String("DBPassword", "", "MongoDb password"),
 }
@@ -71,6 +69,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	session.SetSocketTimeout(1 * time.Hour)
 	log.Println("Logging into database Hyades", *configuration.DBUsername, *configuration.DBPassword)
 	err = session.DB("Hyades").Login(*configuration.DBUsername, *configuration.DBPassword)
 	if err != nil {
@@ -161,8 +160,14 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 		}
 
 		job.Env = envBytes
-		ss.Jobs().AddJob(job)
-
+		log.Println("About to call ss.Jobs().AddJob(job)")
+		err := ss.Jobs().AddJob(job)
+		if err != nil {
+			log.Println("ss.Jobs().AddJob(job):", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Println("Job created")
 	} else {
 
 		log.Println("File not correctly uploaded")
@@ -409,7 +414,7 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 			log.Println("listJobs_CountDone", err, id, ID)
 			return ""
 		}
-		return fmt.Sprint(atomic.LoadInt32(&job.NumPartsDone))
+		return fmt.Sprint(job.NumPartsDone(ss.jobs.session))
 	}
 	fm["totalWork"] = func(id string) string {
 		var ID bson.ObjectId
@@ -433,7 +438,7 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 	jobsTemplate, err := template.New("frame.html").Funcs(fm).ParseFiles("resources/templates/frame.html", "resources/templates/listJobs/body.html",
 		"resources/templates/listJobs/listJob.html", "resources/templates/listJobs/header.html", "resources/templates/nav.html")
 	if err != nil {
-		log.Println(err)
+		log.Println("Template parse error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -441,6 +446,7 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 	jobs, err := ss.jobs.GetAll(user)
 
 	if err != nil {
+		log.Println("ss.jobs.GetAll(user)", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -448,6 +454,7 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 	err = jobsTemplate.Execute(w, pageData)
 
 	if err != nil {
+		log.Println("jobsTemplate.Execute", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -484,7 +491,7 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 			log.Println("listJobs_CountDone", err, id, ID)
 			return ""
 		}
-		return fmt.Sprint(atomic.LoadInt32(&job.NumPartsDone))
+		return fmt.Sprint(job.NumPartsDone(ss.jobs.session))
 	}
 	fm["currentTab"] = func() string {
 		return ""
@@ -543,10 +550,24 @@ func (ss *SubmitServer) getJobResult(user *Hyades.Person, w http.ResponseWriter,
 	log.Println("user.Username", user.Username)
 
 	TempJobFolder := filepath.Join(*configuration.DataPath, job.JobFolder, job.Name)
-	//folder	  := filepath.Join(*dataPath, job.JobFolder, job.Name, strconv.Itoa(w.Index()))
-	retEnv := Hyades.ZipCompressFolder(TempJobFolder)
-	log.Println(TempJobFolder, "getJobResult bytes:", len(retEnv))
-	http.ServeContent(w, req, "Job"+job.Name+".zip", time.Now(), bytes.NewReader(retEnv))
+
+	zipedfilePath := filepath.Join(*configuration.DataPath, job.JobFolder, "Job"+job.Name+".zip")
+	log.Println("Creating zip at", zipedfilePath)
+	zipedFile, err := os.OpenFile(zipedfilePath, os.O_RDWR|os.O_CREATE, os.ModePerm)
+	if err != nil {
+		log.Println("Error creating file", zipedfilePath, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	stat, err := zipedFile.Stat()
+	if err == nil && stat.Size() == 0 {
+		log.Println("About to compress", TempJobFolder)
+		Hyades.ZipCompressFolderWriter(TempJobFolder, zipedFile)
+		log.Println("Zipped file")
+	}
+
+	http.ServeContent(w, req, "Job"+job.Name+".zip", time.Now(), zipedFile)
 
 }
 

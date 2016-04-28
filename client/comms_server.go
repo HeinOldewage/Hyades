@@ -35,9 +35,14 @@ func StartComms(address string, secondaryAddress string) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		log.Println(err)
-		log.Println("Trying server address", secondaryAddress)
-		conn, err = net.Dial("tcp", secondaryAddress)
-		if err != nil {
+		if secondaryAddress != "" {
+			log.Println("Trying server address", secondaryAddress)
+			conn, err = net.Dial("tcp", secondaryAddress)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		} else {
 			log.Println(err)
 			return
 		}
@@ -95,8 +100,11 @@ func ServiceWork(wr io.ReadWriter) {
 			log.Println("ServiceWork Encode", err)
 			return
 		}
-		defer res.GetEnv().Close()
-		_, err = io.CopyN(wr, res.GetEnv(), int64(res.EnvLength))
+		if env := res.GetEnv(); env != nil {
+
+			_, err = io.CopyN(wr, env, int64(res.EnvLength))
+			env.Close()
+		}
 
 		if err != nil {
 			log.Println("ServiceWork CopyN", err)

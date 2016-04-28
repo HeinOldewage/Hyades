@@ -23,7 +23,7 @@ type ConfigFile struct {
 	DBPassword *string
 }
 
-var configFilePath *string = flag.String("config", "", "If the config file is specified it overrides command line paramters and defaults")
+var configFilePath *string = flag.String("config", "config.json", "If the config file is specified it overrides command line paramters and defaults")
 
 var configuration ConfigFile = ConfigFile{
 	DataPath:   flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
@@ -146,7 +146,7 @@ func (ws *WorkServer) getWork() *Hyades.Work {
 
 func (ws *WorkServer) retryWork(work *Hyades.Work, err string) {
 	work.Failed(ws.db.session)
-	work.SetStatus("In Queue after error"+err, ws.db.session)
+	work.SetStatus("In Queue after error "+err, ws.db.session)
 }
 
 func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) error {
@@ -157,8 +157,7 @@ func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) error 
 		return err
 	}
 	work.SetStatus("Work done", ws.db.session)
-	atomic.AddInt32(&work.PartOf().NumPartsDone, 1)
-	work.PartOf().Save(ws.db.session)
+	//work.PartOf().Save(ws.db.session)
 	return nil
 }
 
@@ -172,7 +171,11 @@ func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) error {
 	//ErrOut.txtlogFile
 
 	folder := filepath.Join(ws.dataPath, w.PartOf().JobFolder, w.PartOf().Name, strconv.Itoa(w.Index()))
-	os.MkdirAll(folder, os.ModeDir|os.ModePerm)
+	err := os.MkdirAll(folder, os.ModeDir|os.ModePerm)
+	if err != nil {
+		ws.Log.Println(err)
+		return err
+	}
 	if res.EnvLength > 0 {
 		envfile, err := os.Create(filepath.Join(folder, "Env.zip"))
 		if err != nil {
@@ -190,6 +193,7 @@ func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) error {
 	stdout, err := os.Create(filepath.Join(folder, "StdOut.txt"))
 	if err != nil {
 		ws.Log.Println(err)
+		return err
 	}
 	defer stdout.Close()
 	stdout.Write(res.StdOutStream)

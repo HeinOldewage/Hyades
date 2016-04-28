@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/HeinOldewage/Hyades"
 	//"sync/atomic"
@@ -28,10 +29,10 @@ const (
 	resume int = 3
 )
 
-var ServerAddress0 *string = flag.String("ServerAddress", "0.0.0.0:55555", "The server to get Jobs from")
-var ServerAddress1 *string = flag.String("ServerAddress1", "1.1.1.1:55555", "The backup server to get Jobs from")
+var ServerAddress0 *string = flag.String("ServerAddress", "127.0.0.1:8080", "The server to get Jobs from")
+var ServerAddress1 *string = flag.String("ServerAddress1", "", "The backup server to get Jobs from")
 var logFile *string = flag.String("log", "", "The File to log to, if blank logging is done to stdout")
-var retryTime *int = flag.Int("retry", 60, "The client will attempt to connect to the server approximately every so many seconds")
+var retryTime *int = flag.Int("retry", 6, "The client will attempt to connect to the server approximately every so many seconds")
 var jiggleTime *int = flag.Int("jiggle", 5, "The upper bound for the random interval by which retry time is offset")
 var heartbeat *int = flag.Int("heartbeat", 120, "Time interval (in minutes) that the heartbeat will be sent")
 
@@ -133,6 +134,7 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	stdBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
 
+	log.Println("Chmoding ", filepath.Join(TempJobFolder, work.Parts.Command))
 	err = os.Chmod(filepath.Join(TempJobFolder, work.Parts.Command), os.ModePerm)
 	if err != nil {
 		log.Println("Chmod", err)
@@ -141,10 +143,10 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "linux" {
 		log.Println("Setting up the linux ccommand", work.Parts.Command, work.Parts.Parameters)
-		cmd = exec.Command(work.Parts.Command, work.Parts.Parameters)
+		cmd = exec.Command(work.Parts.Command, work.Parts.Parameters...)
 	} else {
 		log.Println("Setting up the windows ccommand")
-		cmd = exec.Command("cmd", "/C", "cd "+TempJobFolder, " & "+work.Parts.Command+" "+work.Parts.Parameters)
+		cmd = exec.Command("cmd", "/C", "cd "+TempJobFolder, " & "+work.Parts.Command+" "+strings.Join(work.Parts.Parameters, " "))
 	}
 
 	fullpath, _ := filepath.Abs(TempJobFolder)
@@ -155,16 +157,16 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	cmd.Stdout = stdBuf
 	cmd.Stderr = errBuf
 	err = cmd.Run()
+	log.Println("Std", string(stdBuf.Bytes()), len(stdBuf.Bytes()))
+	log.Println("Err", string(errBuf.Bytes()), len(errBuf.Bytes()))
+
 	if err != nil {
 		log.Println("Error running command:", err)
-		res.Error = err.Error()
+		res.Error = "Error running command:" + err.Error()
 		return
 	}
 	cmd.StdoutPipe()
 	log.Println("Done command", cmd)
-
-	log.Println("Std", string(stdBuf.Bytes()), len(stdBuf.Bytes()))
-	log.Println("Err", string(errBuf.Bytes()), len(errBuf.Bytes()))
 
 	//Delete any exes in the folder; they don't need to be sent back to the server
 

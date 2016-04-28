@@ -16,10 +16,9 @@ import (
  All work is linked to a Job
 */
 type Job struct {
-	OwnerID      bson.ObjectId `bson :"omitempty"`
-	Id           bson.ObjectId `json:"id" bson:"_id,omitempty"`
-	Parts        []*Work       `bson :"omitempty"`
-	NumPartsDone int32         `bson :"omitempty"`
+	OwnerID bson.ObjectId `bson :"omitempty"`
+	Id      bson.ObjectId `json:"id" bson:"_id,omitempty"`
+	Parts   []*Work       `bson :"omitempty"`
 
 	JobFolder string
 	//A friendly name to used in displays
@@ -31,15 +30,28 @@ type Job struct {
 	WorkObservers *ObserverList `bson :"omitempty"`
 }
 
+func (j *Job) NumPartsDone(session *mgo.Session) int32 {
+	//
+	query := []bson.M{{"$match": bson.M{"_id": j.Id}}, {"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.done": true}}, {"$group": bson.M{"_id": nil, "doneCount": bson.M{"$sum": 1}}}}
+	iterator := session.DB("Hyades").C("Jobs").Pipe(query).Iter()
+	var res map[string]interface{} = make(map[string]interface{})
+	//var res Hyades.WorkComms
+	for iterator.Next(&res) {
+		log.Println(" (j *Job) NumPartsDone", res)
+		return int32(res["doneCount"].(int))
+	}
+	log.Println(" (j *Job) NumPartsDone error", iterator.Err())
+	return 0
+}
+
 func (j *Job) AddWork(w *Work) {
 	j.Parts = append(j.Parts, w)
 }
 
-func NewJob(OwnerID string, JobID string, Parts []*Work, NumPartsDone int32, Env []byte) *Job {
+func NewJob(OwnerID string, JobID string, Parts []*Work, Env []byte) *Job {
 	res := &Job{
 		OwnerID:       bson.ObjectId(OwnerID),
 		Parts:         Parts,
-		NumPartsDone:  NumPartsDone,
 		Env:           Env,
 		WorkObservers: NewObserverList(),
 	}
@@ -67,7 +79,7 @@ type Work struct {
 	Status        string
 
 	Command    string
-	Parameters string
+	Parameters []string
 }
 
 /*
@@ -78,7 +90,7 @@ type WorkComms struct {
 	ReturnEnv bool
 	Parts     struct {
 		Command    string
-		Parameters string
+		Parameters []string
 	}
 }
 
@@ -179,9 +191,15 @@ func (w *Work) Save(session *mgo.Session) error {
 	query := bson.M{"_id": bson.ObjectId(w.PartOf().Id), "parts.command": w.Command, "parts.parameters": w.Parameters}
 	UpdateTo := bson.M{"$set": bson.M{"parts.$": *w}}
 	err := session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
+
 	if err != nil {
-		log.Fatal(err)
+		log.Println("(w *Work) Save", err)
+		log.Fatalln("(w *Work) Save:", bson.ObjectId(w.PartOf().Id))
 	}
+	/*if ci.Matched != 1 {
+		log.Println("w *Work) Save: The number of documents that match a 'unique' jobs were not 1 but", ci.Matched)
+		log.Fatal("w *Work) Save:", ci)
+	}*/
 	return err
 }
 
@@ -228,12 +246,26 @@ func (j *Job) Setup() {
 func (j *Job) Save(session *mgo.Session) error {
 	log.Println("Saving job", j.Name)
 	query := bson.M{"_id": bson.ObjectId(j.Id)}
-	UpdateTo := j
-	err := session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
+	d, err := bson.Marshal(j)
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return err
 	}
-	return err
+	UpdateTo := make(map[string]interface{})
+	err = bson.Unmarshal(d, UpdateTo)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	delete(UpdateTo, "parts") //Don't update parts
+
+	err = session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
 }
 
 func (j *Job) CreateWorkComms(w *Work) *WorkComms {
