@@ -32,7 +32,7 @@ type Job struct {
 
 func (j *Job) NumPartsDone(session *mgo.Session) int32 {
 	//
-	query := []bson.M{{"$match": bson.M{"_id": j.Id}}, {"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.done": true}}, {"$group": bson.M{"_id": nil, "doneCount": bson.M{"$sum": 1}}}}
+	query := []bson.M{{"$match": bson.M{"_id": j.Id}}, {"$project": bson.M{"parts": 1}}, {"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.done": true}}, {"$group": bson.M{"_id": nil, "doneCount": bson.M{"$sum": 1}}}}
 	iterator := session.DB("Hyades").C("Jobs").Pipe(query).Iter()
 	var res map[string]interface{} = make(map[string]interface{})
 	//var res Hyades.WorkComms
@@ -40,7 +40,9 @@ func (j *Job) NumPartsDone(session *mgo.Session) int32 {
 		log.Println(" (j *Job) NumPartsDone", res)
 		return int32(res["doneCount"].(int))
 	}
-	log.Println(" (j *Job) NumPartsDone error", iterator.Err())
+	if iterator.Err() != nil {
+		log.Println(" (j *Job) NumPartsDone error", iterator.Err())
+	}
 	return 0
 }
 
