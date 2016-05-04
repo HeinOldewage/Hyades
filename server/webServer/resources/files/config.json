@@ -1,0 +1,9 @@
+{"Name" : "Job Name",
+"ReturnEnv" : true,
+"Parts" : [
+	{"Command" : "./run.sh", "Parameters" : ["-function=0","-run=0"]},
+	{"Command" : "./run.sh", "Parameters" : ["-function=0","-run=1"]},
+	{"Command" : "./run.sh", "Parameters" : ["-function=19","-run=0"]},
+	{"Command" : "./run.sh", "Parameters" : ["-function=19","-run=1"]}
+]
+}

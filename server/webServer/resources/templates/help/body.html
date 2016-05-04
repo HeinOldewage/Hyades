@@ -3,9 +3,21 @@
 					</div>
 <div class="prettyDiv">
   <ol class="prettyOl">
-    <li class="prettyLi"><span class="prettySpan">1.</span><p class="prettyP">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent euismod ultrices ante, ac laoreet nulla vestibulum adipiscing. Nam quis justo in augue auctor imperdiet. Curabitur aliquet orci sit amet est posuere consectetur. Fusce nec leo ut massa viverra venenatis. Nam accumsan libero a elit aliquet quis ullamcorper arcu tincidunt. Praesent purus turpis, consectetur quis congue vel, pulvinar at lorem. Vivamus varius condimentum dolor, quis ultricies ipsum porta quis. </p></li>
-    <li class="prettyLi"><span class="prettySpan">2.</span><p class="prettyP">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent euismod ultrices ante, ac laoreet nulla vestibulum adipiscing. Nam quis justo in augue auctor imperdiet. Curabitur aliquet orci sit amet est posuere consectetur.  </p></li>
-    <li class="prettyLi"><span class="prettySpan">3.</span><p class="prettyP">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent euismod ultrices ante, ac laoreet nulla vestibulum adipiscing. Nam quis justo in augue auctor imperdiet. Curabitur aliquet orci sit amet est posuere consectetur.  </p></li>
-  </ol> 
+    <li class="prettyLi"><span class="prettySpan">1.</span><p class="prettyP">A Job consists out of a number of units called Work units. A Job is specified in JSON with the command and paramters for each Work unit. <br>
+	An example of a Job could be getting statistically significant samples on a PSO algorithm. The Job would consist out of 30 Work units, each doing one independant run of the algorithm<br>
+	</p></li>
+	<li class="prettyLi"><span class="prettySpan">2.</span><p class="prettyP">In addition to the Job configuration, it is also nessicary to include an environment within which the command will be executed. This environment will contain the executable and any other files needed to execute a Work unit. One environment is used for all Work units.</p></li>
+	<li class="prettyLi"><span class="prettySpan">3.</span><p class="prettyP">An example <a href="/config.json" download >config</a> and <a href="/env.zip">environment</a> can be downloaded and run on the cluster.</p></li>
+    <li class="prettyLi"><span class="prettySpan">4.</span><p class="prettyP">The Job config has the following parameters <br>
+	<b><i>Name</i></b>, used for display. <br>
+	<b><i>ReturnEnv</i></b>, if set to true the execuable and all files in the environment will be returned with the standard output and standard error .<br>
+	<b><i>Parts</i></b> is an array of Work units. <br>
+	<b><i>Command</i></b> is the command the execute. <br>
+	<b><i>Parameters</i></b> is an array of parameters to pass to the Command. <br>
+	<br>
+	Note that each Work units has to have a unique Command/Parameters pair.
+	  </p></li>
+  
+	</ol> 
 </div>
 						
