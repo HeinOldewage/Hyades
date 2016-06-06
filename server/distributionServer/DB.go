@@ -35,7 +35,7 @@ func (db *DB) GetNextJob() *Hyades.Work {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 	for {
-		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.beinghandled": false}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}}
+		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$project": bson.M{"parts": 1, "_id": 1}}, {"$match": bson.M{"parts.beinghandled": false}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}}
 		iterator := db.session.DB("Hyades").C("Jobs").Pipe(query).Iter()
 
 		var res map[string]interface{} = make(map[string]interface{})
