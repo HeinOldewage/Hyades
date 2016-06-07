@@ -35,13 +35,13 @@ func (db *DB) GetNextJob() *Hyades.Work {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 	for {
-		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$project": bson.M{"parts": 1, "_id": 1}}, {"$match": bson.M{"parts.beinghandled": false}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}}
+		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$project": bson.M{"parts": 1, "_id": 1, "index": 1}}, {"$match": bson.M{"parts.beinghandled": false}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}}
 		iterator := db.session.DB("Hyades").C("Jobs").Pipe(query).Iter()
 
 		var res map[string]interface{} = make(map[string]interface{})
 		//var res Hyades.WorkComms
 		for iterator.Next(&res) {
-			log.Println(res["parts"])
+			log.Println(res)
 			//Set to being handled
 			updater := bson.M{"$set": bson.M{"parts." + strconv.FormatInt(res["index"].(int64), 10) + ".beinghandled": true}}
 			err := db.session.DB("Hyades").C("Jobs").UpdateId(res["_id"].(bson.ObjectId), updater)
