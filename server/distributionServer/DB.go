@@ -23,6 +23,13 @@ func NewDB(username, pasword string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if session.Safe() == nil {
+		log.Println("The session is unsafe")
+	} else {
+		log.Println("The session is safe", session.Safe())
+	}
+
 	err = session.DB("Hyades").Login(username, pasword)
 	if err != nil {
 		log.Println("Could not login")
