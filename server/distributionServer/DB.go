@@ -72,7 +72,21 @@ func (db *DB) SaveWork(work *Hyades.Work) error {
 	return work.Save(db.session)
 }
 
+func (db *DB) ResetBeingDone() error {
+	f := func() error {
+		return db.session.DB("Hyades").C("Jobs").Update(bson.M{"parts.beinghandled": true}, bson.M{"$set": bson.M{"parts.$.beinghandled": false}})
+	}
+
+	for f() == nil {
+	}
+
+	log.Println(f())
+
+	return nil
+}
+
 func init() {
+
 	return
 	session, err := mgo.Dial("127.0.0.1")
 	if err != nil {

@@ -56,6 +56,8 @@ func main() {
 		log.Println(err)
 	}
 	fmt.Println("Connected to DB")
+
+	db.ResetBeingDone()
 	//log.Println("Job:", db.GetNextJob())
 
 	ws := NewWorkServer(":8080", db, *configuration.DataPath)
