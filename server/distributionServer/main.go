@@ -153,9 +153,12 @@ func (ws *WorkServer) retryWork(work *Hyades.Work, err string) {
 }
 
 func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) error {
-	work.Succeeded(ws.db.session)
+	err := work.Succeeded(ws.db.session)
+	if err != nil {
+		return err
+	}
 	work.SetStatus("Saving work", ws.db.session)
-	err := ws.SaveResult(work, res)
+	err = ws.SaveResult(work, res)
 	if err != nil {
 		return err
 	}

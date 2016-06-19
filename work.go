@@ -127,7 +127,7 @@ func (w *Work) Failed(session *mgo.Session) {
 	w.Save(session)
 }
 
-func (w *Work) Succeeded(session *mgo.Session) {
+func (w *Work) Succeeded(session *mgo.Session) error {
 	w.FinishTime = time.Now()
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.Done = true
@@ -135,7 +135,7 @@ func (w *Work) Succeeded(session *mgo.Session) {
 	w.BeingHandled = false
 	w.CompletedBy = w.CurrentClient
 	w.CurrentClient = nil
-	w.Save(session)
+	return w.Save(session)
 }
 
 func (w *Work) SetStatus(status string, session *mgo.Session) {
