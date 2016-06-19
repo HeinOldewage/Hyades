@@ -119,8 +119,8 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 			c.Owner.Stats.DonePart(c.ClientInfo)
 		} else {
 			c.Owner.retryWork(work, res.Error)
-			log.Println(res.ErrOutStream)
-			log.Println(res.StdOutStream)
+			log.Println("ServiceWork ErrOutStream", res.ErrOutStream)
+			log.Println("ServiceWork StdOutStream", res.StdOutStream)
 			c.Owner.Log.Println("Client ", c.ClientInfo.ComputerName, "(", c.ClientInfo.OperatingSystem, ") terminated simulation with error:", res.Error)
 			c.Owner.Stats.JobError()
 		}

@@ -41,7 +41,7 @@ func (db *DB) GetNextJob() *Hyades.Work {
 		var res map[string]interface{} = make(map[string]interface{})
 		//var res Hyades.WorkComms
 		for iterator.Next(&res) {
-			log.Println(res)
+
 			//Set to being handled
 			updater := bson.M{"$set": bson.M{"parts." + strconv.FormatInt(res["index"].(int64), 10) + ".beinghandled": true}}
 			err := db.session.DB("Hyades").C("Jobs").UpdateId(res["_id"].(bson.ObjectId), updater)
@@ -80,7 +80,7 @@ func (db *DB) ResetBeingDone() error {
 	for f() == nil {
 	}
 
-	log.Println(f())
+	log.Println("ResetBeingDone", f())
 
 	return nil
 }
