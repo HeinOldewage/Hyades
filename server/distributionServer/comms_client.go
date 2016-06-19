@@ -87,11 +87,11 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 
 	for {
 		work := c.Owner.getWork()
-		log.Println("got work from job", work.PartOf().Id.String())
+		log.Println("got work from job", work.PartOf().Id)
 		c.Work = work
 
-		work.SetStatus("Sending work to client "+c.ClientInfo.ComputerName, c.Owner.db.session)
-		work.Dispatch(c.ClientInfo, c.Owner.db.session)
+		work.SetStatus("Sending work to client " + c.ClientInfo.ComputerName)
+		work.Dispatch(c.ClientInfo)
 
 		comms := work.PartOf().CreateWorkComms(work)
 		err := writer.Encode(comms)
@@ -101,7 +101,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 			return
 		}
 
-		work.SetStatus("Awaiting response from client "+c.ClientInfo.ComputerName, c.Owner.db.session)
+		work.SetStatus("Awaiting response from client " + c.ClientInfo.ComputerName)
 
 		var res *Hyades.WorkResult = new(Hyades.WorkResult)
 		err = reader.Decode(res)

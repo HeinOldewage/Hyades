@@ -23,8 +23,6 @@ import (
 	"time"
 
 	"github.com/gorilla/sessions"
-	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
 )
 
 type ConfigFile struct {

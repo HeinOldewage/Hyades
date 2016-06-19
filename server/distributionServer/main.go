@@ -18,17 +18,15 @@ import (
 )
 
 type ConfigFile struct {
-	DataPath   *string
-	DBUsername *string
-	DBPassword *string
+	DataPath *string
+	DB       *string
 }
 
 var configFilePath *string = flag.String("config", "config.json", "If the config file is specified it overrides command line paramters and defaults")
 
 var configuration ConfigFile = ConfigFile{
-	DataPath:   flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
-	DBUsername: flag.String("DBUsername", "", "MongoDb username"),
-	DBPassword: flag.String("DBPassword", "", "MongoDb password"),
+	DataPath: flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
+	DB:       flag.String("DBUsername", "", "MongoDb username"),
 }
 
 func main() {
@@ -51,15 +49,12 @@ func main() {
 	}
 	log.Println("config", configuration)
 
-	db, err := NewDB(*configuration.DBUsername, *configuration.DBPassword)
+	db, err := NewDB(*configuration.DB)
 	if err != nil {
 		log.Println("DB create error", err)
 		return
 	}
 	fmt.Println("Connected to DB")
-
-	db.ResetBeingDone()
-	//log.Println("Job:", db.GetNextJob())
 
 	ws := NewWorkServer(":8080", db, *configuration.DataPath)
 
@@ -148,21 +143,21 @@ func (ws *WorkServer) getWork() *Hyades.Work {
 }
 
 func (ws *WorkServer) retryWork(work *Hyades.Work, err string) {
-	work.Failed(ws.db.session)
-	work.SetStatus("In Queue after error "+err, ws.db.session)
+	work.Failed()
+	work.SetStatus("In Queue after error " + err)
 }
 
 func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) error {
-	err := work.Succeeded(ws.db.session)
+	err := work.Succeeded()
 	if err != nil {
 		return err
 	}
-	work.SetStatus("Saving work", ws.db.session)
+	work.SetStatus("Saving work")
 	err = ws.SaveResult(work, res)
 	if err != nil {
 		return err
 	}
-	work.SetStatus("Work done", ws.db.session)
+	work.SetStatus("Work done")
 	//work.PartOf().Save(ws.db.session)
 	return nil
 }

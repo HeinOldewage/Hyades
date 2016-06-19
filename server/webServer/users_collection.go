@@ -6,8 +6,6 @@ import (
 	"github.com/HeinOldewage/Hyades"
 
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/mgo.v2"
-	//	"gopkg.in/mgo.v2/bson"
 )
 
 type UserMap struct {

@@ -7,18 +7,15 @@ import (
 	"io"
 	"log"
 	"time"
-
-	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
 )
 
 /*
  All work is linked to a Job
 */
 type Job struct {
-	OwnerID bson.ObjectId `bson :"omitempty"`
-	Id      bson.ObjectId `json:"id" bson:"_id,omitempty"`
-	Parts   []*Work       `bson :"omitempty"`
+	OwnerID int32   `bson :"omitempty"`
+	Id      int32   `json:"id" bson:"_id,omitempty"`
+	Parts   []*Work `bson :"omitempty"`
 
 	JobFolder string
 	//A friendly name to used in displays
@@ -30,19 +27,8 @@ type Job struct {
 	WorkObservers *ObserverList `bson :"omitempty"`
 }
 
-func (j *Job) NumPartsDone(session *mgo.Session) int32 {
-	//
-	query := []bson.M{{"$match": bson.M{"_id": j.Id}}, {"$project": bson.M{"parts": 1}}, {"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$match": bson.M{"parts.done": true}}, {"$group": bson.M{"_id": nil, "doneCount": bson.M{"$sum": 1}}}}
-	iterator := session.DB("Hyades").C("Jobs").Pipe(query).Iter()
-	var res map[string]interface{} = make(map[string]interface{})
-	//var res Hyades.WorkComms
-	for iterator.Next(&res) {
-		log.Println(" (j *Job) NumPartsDone", res)
-		return int32(res["doneCount"].(int))
-	}
-	if iterator.Err() != nil {
-		log.Println(" (j *Job) NumPartsDone error", iterator.Err())
-	}
+func (j *Job) NumPartsDone() int32 {
+
 	return 0
 }
 
@@ -50,9 +36,9 @@ func (j *Job) AddWork(w *Work) {
 	j.Parts = append(j.Parts, w)
 }
 
-func NewJob(OwnerID string, JobID string, Parts []*Work, Env []byte) *Job {
+func NewJob(OwnerID int32, JobID string, Parts []*Work, Env []byte) *Job {
 	res := &Job{
-		OwnerID:       bson.ObjectId(OwnerID),
+		OwnerID:       OwnerID,
 		Parts:         Parts,
 		Env:           Env,
 		WorkObservers: NewObserverList(),
@@ -65,7 +51,7 @@ A Work struct gives the Environment the Command must be executed and specifies w
 */
 type Work struct {
 	partOf *Job
-	PartID bson.ObjectId `json:"id" bson:"_id,omitempty"`
+	PartID int32 `json:"id" bson:"_id,omitempty"`
 
 	DispatchTime        time.Time
 	FinishTime          time.Time
@@ -96,10 +82,10 @@ type WorkComms struct {
 	}
 }
 
-func NewWork(partOf *Job, partId string, Cmd string) *Work {
+func NewWork(partOf *Job, partId int32, Cmd string) *Work {
 	work := &Work{
 		partOf:    partOf,
-		PartID:    bson.ObjectId(partId),
+		PartID:    partId,
 		Command:   Cmd,
 		FailCount: 0,
 		Done:      false,
@@ -110,24 +96,24 @@ func NewWork(partOf *Job, partId string, Cmd string) *Work {
 	return work
 }
 
-func (w *Work) Dispatch(ci *ClientInfo, session *mgo.Session) {
+func (w *Work) Dispatch(ci *ClientInfo) {
 	w.DispatchTime = time.Now()
 	w.CurrentClient = ci
 	w.Dispatched = true
-	w.Save(session)
+	w.Save()
 }
 
-func (w *Work) Failed(session *mgo.Session) {
+func (w *Work) Failed() {
 	w.FinishTime = time.Now()
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.FailCount++
 	w.CurrentClient = nil
 	w.Dispatched = false
 	w.BeingHandled = false
-	w.Save(session)
+	w.Save()
 }
 
-func (w *Work) Succeeded(session *mgo.Session) error {
+func (w *Work) Succeeded() error {
 	w.FinishTime = time.Now()
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.Done = true
@@ -135,13 +121,13 @@ func (w *Work) Succeeded(session *mgo.Session) error {
 	w.BeingHandled = false
 	w.CompletedBy = w.CurrentClient
 	w.CurrentClient = nil
-	return w.Save(session)
+	return w.Save()
 }
 
-func (w *Work) SetStatus(status string, session *mgo.Session) {
+func (w *Work) SetStatus(status string) {
 	w.Status = status
 	log.Println("Setting status", status)
-	w.Save(session)
+	w.Save()
 }
 
 func (w *Work) PartOf() *Job {
@@ -188,21 +174,9 @@ func (w *Work) MarshalJSON() ([]byte, error) {
 	return b, e
 }
 
-func (w *Work) Save(session *mgo.Session) error {
+func (w *Work) Save() error {
 
-	query := bson.M{"_id": bson.ObjectId(w.PartOf().Id), "parts.command": w.Command, "parts.parameters": w.Parameters}
-	UpdateTo := bson.M{"$set": bson.M{"parts.$": *w}}
-	err := session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
-
-	if err != nil {
-		log.Println("(w *Work) Save", err)
-		log.Fatalln("(w *Work) Save:", bson.ObjectId(w.PartOf().Id))
-	}
-	/*if ci.Matched != 1 {
-		log.Println("w *Work) Save: The number of documents that match a 'unique' jobs were not 1 but", ci.Matched)
-		log.Fatal("w *Work) Save:", ci)
-	}*/
-	return err
+	return nil
 }
 
 func (j *Job) callback(e interface{}) {
@@ -245,27 +219,7 @@ func (j *Job) Setup() {
 	}
 }
 
-func (j *Job) Save(session *mgo.Session) error {
-	log.Println("Saving job", j.Name)
-	query := bson.M{"_id": bson.ObjectId(j.Id)}
-	d, err := bson.Marshal(j)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-	UpdateTo := make(map[string]interface{})
-	err = bson.Unmarshal(d, UpdateTo)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-	delete(UpdateTo, "parts") //Don't update parts
-
-	err = session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
+func (j *Job) Save() error {
 
 	return nil
 }
