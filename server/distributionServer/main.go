@@ -163,6 +163,10 @@ func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) error 
 		return err
 	}
 	work.SetStatus("Work done", ws.db.session)
+
+	if work.Done != true {
+		log.Fatal("The work is not done after setting it to done")
+	}
 	//work.PartOf().Save(ws.db.session)
 	return nil
 }

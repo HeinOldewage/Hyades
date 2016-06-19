@@ -48,7 +48,9 @@ func (db *DB) GetNextJob() *Hyades.Work {
 		var res map[string]interface{} = make(map[string]interface{})
 		//var res Hyades.WorkComms
 		for iterator.Next(&res) {
-
+			if res["parts"].([]bson.M)[res["index"].(int64)]["done"].(bool) == true {
+				log.Fatal("We got a job that was done to do again")
+			}
 			//Set to being handled
 			updater := bson.M{"$set": bson.M{"parts." + strconv.FormatInt(res["index"].(int64), 10) + ".beinghandled": true}}
 			err := db.session.DB("Hyades").C("Jobs").UpdateId(res["_id"].(bson.ObjectId), updater)
