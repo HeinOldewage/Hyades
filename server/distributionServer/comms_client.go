@@ -129,7 +129,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		if err != nil {
 			log.Println("Saving work failed", err)
 		} else {
-			log.Println("Saved work", work.Command, work.Parameters)
+			log.Println("Saved work", work.PartOf().Name, work.Command, work.Parameters)
 		}
 	}
 }
