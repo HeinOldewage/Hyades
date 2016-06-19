@@ -38,14 +38,14 @@ func main() {
 	if *configFilePath != "" {
 		file, err := os.Open(*configFilePath)
 		if err != nil {
-			log.Println(err)
+			log.Println("Config open error", err)
 			return
 		}
 
 		decoder := json.NewDecoder(file)
 		err = decoder.Decode(&configuration)
 		if err != nil {
-			log.Println(err)
+			log.Println("Config parse error", err)
 			return
 		}
 	}
@@ -53,7 +53,8 @@ func main() {
 
 	db, err := NewDB(*configuration.DBUsername, *configuration.DBPassword)
 	if err != nil {
-		log.Println(err)
+		log.Println("DB create error", err)
+		return
 	}
 	fmt.Println("Connected to DB")
 	//log.Println("Job:", db.GetNextJob())
@@ -185,7 +186,7 @@ func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) error {
 		_, err = io.CopyN(envfile, res.GetEnv(), int64(res.EnvLength))
 		if err != nil {
 			ws.Log.Println(err)
-			log.Println(err)
+			log.Println("SaveResult", err)
 			return err
 		}
 	}
