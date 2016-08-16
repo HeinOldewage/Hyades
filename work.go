@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/mgo.v2"
@@ -196,7 +198,7 @@ func (w *Work) Save(session *mgo.Session) error {
 
 	if err != nil {
 		log.Println("(w *Work) Save", err)
-		log.Fatalln("(w *Work) Save:", bson.ObjectId(w.PartOf().Id))
+		log.Println("(w *Work) Save:", bson.ObjectId(w.PartOf().Id))
 	}
 	/*if ci.Matched != 1 {
 		log.Println("w *Work) Save: The number of documents that match a 'unique' jobs were not 1 but", ci.Matched)
@@ -262,6 +264,21 @@ func (j *Job) Save(session *mgo.Session) error {
 	delete(UpdateTo, "parts") //Don't update parts
 
 	err = session.DB("Hyades").C("Jobs").Update(query, UpdateTo)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
+}
+
+func (j *Job) Delete(session *mgo.Session, datapath string) error {
+	log.Println("Deleteing job", j.Name)
+	query := bson.M{"_id": bson.ObjectId(j.Id)}
+
+	os.RemoveAll(filepath.Join(datapath, j.JobFolder, j.Name))
+
+	err := session.DB("Hyades").C("Jobs").Remove(query)
 	if err != nil {
 		log.Println(err)
 		return err

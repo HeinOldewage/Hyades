@@ -42,7 +42,7 @@ func (db *DB) GetNextJob() *Hyades.Work {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 	for {
-		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$project": bson.M{"parts": 1, "_id": 1, "index": 1}}, {"$match": bson.M{"parts.beinghandled": false}}, {"$match": bson.M{"parts.done": false}}, {"$match": bson.M{"parts.dispatched": false}}}
+		query := []bson.M{{"$unwind": bson.M{"path": "$parts", "includeArrayIndex": "index"}}, {"$project": bson.M{"parts": 1, "_id": 1, "index": 1}}, {"$match": bson.M{"parts.beinghandled": false}}, {"$match": bson.M{"parts.done": false}}}
 		iterator := db.session.DB("Hyades").C("Jobs").Pipe(query).Iter()
 
 		var res map[string]interface{} = make(map[string]interface{})
@@ -81,7 +81,7 @@ func (db *DB) SaveWork(work *Hyades.Work) error {
 
 func (db *DB) ResetBeingDone() error {
 	f := func() error {
-		return db.session.DB("Hyades").C("Jobs").Update(bson.M{"parts.beinghandled": true}, bson.M{"$set": bson.M{"parts.$.beinghandled": false}})
+		return db.session.DB("Hyades").C("Jobs").Update(bson.M{"parts.beinghandled": true}, bson.M{"$set": bson.M{"parts.$.beinghandled": false, "parts.$.dispatched": false}})
 	}
 
 	for f() == nil {
