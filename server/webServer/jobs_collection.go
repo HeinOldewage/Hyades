@@ -1,15 +1,19 @@
 package main
 
 import (
+	"database/sql"
+
 	"github.com/HeinOldewage/Hyades"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type JobMap struct {
-	session *mgo.Session
+	dbFile string
 }
 
-func NewJobMap(session *mgo.Session) *JobMap {
-	return &JobMap{session}
+func NewJobMap(dbFile string) *JobMap {
+	return &JobMap{dbFile}
 }
 
 func (jm *JobMap) NewJob(user *Hyades.Person) *Hyades.Job {
@@ -17,27 +21,51 @@ func (jm *JobMap) NewJob(user *Hyades.Person) *Hyades.Job {
 }
 
 func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
-	jobIn := make(map[string]interface{})
-	jobIn["_id"] = bson.ObjectId(id)
+	conn, err := sql.Open("sqlite3", jm.dbFile)
+	if err != nil {
+		return nil, err
+	}
+	res, err := conn.Query("Select * from JOBS where ID = %", id)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
 	job = new(Hyades.Job)
-	err = jm.session.DB("Hyades").C("Jobs").Find(&jobIn).One(job)
+	if res.Next() {
+		res.Scan(&job.Id, &job.OwnerID, &job.Name, &job.Env, &job.ReturnEnv)
+	}
 
 	return job, err
 }
 
 func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
-	find := make(map[string]interface{})
-	find["ownerid"] = user.Id
-	iterator := jm.session.DB("Hyades").C("Jobs").Find(find).Iter()
-	var job *Hyades.Job = new(Hyades.Job)
-	for iterator.Next(job) {
+	conn, err := sql.Open("sqlite3", jm.dbFile)
+	if err != nil {
+		return nil, err
+	}
+	res, err := conn.Query("Select * from JOBS where OwnerID = %", user.Id)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	if res.Next() {
+		job := &Hyades.Job{}
+		res.Scan(&job.Id, &job.OwnerID, &job.Name, &job.Env, &job.ReturnEnv)
 		jobs = append(jobs, job)
-		job = new(Hyades.Job)
 	}
 
-	return jobs, iterator.Err()
+	return jobs, res.Err()
 }
 
 func (jm *JobMap) AddJob(job *Hyades.Job) error {
-	return jm.session.DB("Hyades").C("Jobs").Insert(job)
+	conn, err := sql.Open("sqlite3", jm.dbFile)
+	if err != nil {
+		return err
+	}
+	res, err := conn.Exec("Insert into JOBS (id,OwnerID,Name,Env,ReturnEnv) values ( % , % , % , % , % );", job.Id, &job.OwnerID, &job.Name, &job.Env, &job.ReturnEnv)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -9,11 +9,11 @@ import (
 )
 
 type UserMap struct {
-	session *mgo.Session
+	dbFile string
 }
 
-func NewUserMap(session *mgo.Session) *UserMap {
-	return &UserMap{session}
+func NewUserMap(dbFile string) *UserMap {
+	return &UserMap{dbFile}
 }
 
 func (um *UserMap) addUser(u, p string) (*Hyades.Person, bool) {

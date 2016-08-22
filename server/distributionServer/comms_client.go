@@ -86,7 +86,10 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 	}()
 
 	for {
-		work := c.Owner.getWork()
+		work, err := c.Owner.getWork()
+		if err != nil {
+			log.Println(err)
+		}
 		log.Println("got work from job", work.PartOf().Id)
 		c.Work = work
 
@@ -94,7 +97,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		work.Dispatch(c.ClientInfo)
 
 		comms := work.PartOf().CreateWorkComms(work)
-		err := writer.Encode(comms)
+		err = writer.Encode(comms)
 		if err != nil {
 			log.Println("ServiceWork writer.Encode(comms) error", err)
 			c.FrameWorkError(err)

@@ -28,8 +28,7 @@ import (
 type ConfigFile struct {
 	DataPath      *string
 	ServerAddress *string
-	DBUsername    *string
-	DBPassword    *string
+	DB            *string
 }
 
 var configFilePath *string = flag.String("config", "config.json", "If the config file is specified it overrides command line paramters and defaults")
@@ -37,8 +36,7 @@ var configFilePath *string = flag.String("config", "config.json", "If the config
 var configuration ConfigFile = ConfigFile{
 	DataPath:      flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
 	ServerAddress: flag.String("address", ":8088", "The folder that the distribution server saves the data"),
-	DBUsername:    flag.String("DBUsername", "", "MongoDb username"),
-	DBPassword:    flag.String("DBPassword", "", "MongoDb password"),
+	DB:            flag.String("DBFile", "db.sql", "Sqlite db file"),
 }
 
 func main() {
@@ -61,20 +59,10 @@ func main() {
 		}
 	}
 
-	log.Println("config", *configuration.DataPath, *configuration.DBPassword, *configuration.DBUsername, *configuration.ServerAddress)
+	log.Println("config", *configuration.DataPath, *configuration.DB, *configuration.ServerAddress)
 
-	session, err := mgo.Dial("127.0.0.1")
-	if err != nil {
-		log.Fatal(err)
-	}
-	session.SetSocketTimeout(1 * time.Hour)
-	log.Println("Logging into database Hyades", *configuration.DBUsername, *configuration.DBPassword)
-	err = session.DB("Hyades").Login(*configuration.DBUsername, *configuration.DBPassword)
-	if err != nil {
-		log.Fatal(err)
-	}
 	log.Println("Starting web server on ", *configuration.ServerAddress)
-	submitServer := NewSubmitServer(*configuration.ServerAddress, session)
+	submitServer := NewSubmitServer(*configuration.ServerAddress, *configuration.DB)
 	submitServer.Listen()
 }
 
@@ -90,18 +78,18 @@ type SubmitServer struct {
 	users *UserMap
 }
 
-func NewSubmitServer(Address string, session *mgo.Session) *SubmitServer {
+func NewSubmitServer(Address string, dbFile string) *SubmitServer {
 
 	//Delete all previous Jobs, After Users are saved/loaded from file only delete if that fails
 
-	userMap := NewUserMap(session)
+	userMap := NewUserMap(dbFile)
 
 	defer log.Println("NewSubmitServer Done")
 	return &SubmitServer{Address,
 		nil,
 		sessions.NewCookieStore([]byte("ForTheUnity")),
 		make(map[string]*Hyades.Person),
-		NewJobMap(session),
+		NewJobMap(dbFile),
 		userMap,
 	}
 
@@ -157,6 +145,7 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 			return
 		}
 
+		//Save envBytes to file
 		job.Env = envBytes
 		log.Println("About to call ss.Jobs().AddJob(job)")
 		err := ss.Jobs().AddJob(job)
@@ -390,14 +379,8 @@ func (ss *SubmitServer) createJob(user *Hyades.Person, w http.ResponseWriter, re
 func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req *http.Request) {
 	var fm template.FuncMap = make(template.FuncMap)
 
-	fm["IDToString"] = func(id bson.ObjectId) string {
-		data, err := bson.ObjectId(id).MarshalText()
-		log.Println("IDToString", bson.ObjectId(id))
-		if err != nil {
-			log.Println("listJobs_IDToString", err, id)
-			return ""
-		}
-		return string(data)
+	fm["IDToString"] = func(id int) string {
+		return strconv.Itoa(id)
 	}
 
 	fm["CountDone"] = func(id string) string {

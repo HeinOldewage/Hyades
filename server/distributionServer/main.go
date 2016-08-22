@@ -26,7 +26,7 @@ var configFilePath *string = flag.String("config", "config.json", "If the config
 
 var configuration ConfigFile = ConfigFile{
 	DataPath: flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
-	DB:       flag.String("DBUsername", "", "MongoDb username"),
+	DB:       flag.String("DBFile", "db.sql", "Sqlite db file"),
 }
 
 func main() {
@@ -138,7 +138,7 @@ func (ws *WorkServer) GetWorkAvailable() int {
 	return 0
 }
 
-func (ws *WorkServer) getWork() *Hyades.Work {
+func (ws *WorkServer) getWork() (*Hyades.Work, error) {
 	return ws.db.GetNextJob()
 }
 

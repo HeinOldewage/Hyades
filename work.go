@@ -5,7 +5,9 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"io"
+	"io/ioutil"
 	"log"
+	"os"
 	"time"
 )
 
@@ -13,15 +15,16 @@ import (
  All work is linked to a Job
 */
 type Job struct {
-	OwnerID int32   `bson :"omitempty"`
-	Id      int32   `json:"id" bson:"_id,omitempty"`
+	OwnerID int     `bson :"omitempty"`
+	Id      int     `json:"id" bson:"_id,omitempty"`
 	Parts   []*Work `bson :"omitempty"`
 
 	JobFolder string
 	//A friendly name to used in displays
 	Name string
 
-	Env       []byte `bson :"omitempty"`
+	//Path to env file
+	Env       string `bson :"omitempty"`
 	ReturnEnv bool   `bson :"omitempty"`
 
 	WorkObservers *ObserverList `bson :"omitempty"`
@@ -36,7 +39,7 @@ func (j *Job) AddWork(w *Work) {
 	j.Parts = append(j.Parts, w)
 }
 
-func NewJob(OwnerID int32, JobID string, Parts []*Work, Env []byte) *Job {
+func NewJob(OwnerID int, JobID string, Parts []*Work, Env string) *Job {
 	res := &Job{
 		OwnerID:       OwnerID,
 		Parts:         Parts,
@@ -224,13 +227,20 @@ func (j *Job) Save() error {
 	return nil
 }
 
-func (j *Job) CreateWorkComms(w *Work) *WorkComms {
+func (j *Job) CreateWorkComms(w *Work) (*WorkComms, error) {
 	res := WorkComms{}
-	res.Env = j.Env
+	file, err := os.Open(j.Env)
+	if err != nil {
+		return nil, err
+	}
+	res.Env, err = ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
 	res.ReturnEnv = j.ReturnEnv
 	res.Parts.Command = w.Command
 	res.Parts.Parameters = w.Parameters
-	return &res
+	return &res, nil
 }
 
 func (j *Job) UnmarshalBinary(data []byte) error {
