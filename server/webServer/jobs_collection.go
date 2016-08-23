@@ -25,7 +25,7 @@ func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := conn.Query("Select * from JOBS where ID = %", id)
+	res, err := conn.Query("Select * from JOBS where ID = ?", id)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := conn.Query("Select * from JOBS where OwnerID = %", user.Id)
+	res, err := conn.Query("Select * from JOBS where OwnerID = ?", user.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +62,14 @@ func (jm *JobMap) AddJob(job *Hyades.Job) error {
 	if err != nil {
 		return err
 	}
-	res, err := conn.Exec("Insert into JOBS (id,OwnerID,Name,Env,ReturnEnv) values ( % , % , % , % , % );", job.Id, &job.OwnerID, &job.Name, &job.Env, &job.ReturnEnv)
+	res, err := conn.Exec("Insert into JOBS (id,OwnerID,Name,Env,ReturnEnv) values ( ? , ? , ? , ? , ? );", job.Id, &job.OwnerID, &job.Name, &job.Env, &job.ReturnEnv)
 	if err != nil {
 		return err
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		job.Id = int(id)
 	}
 
 	return nil

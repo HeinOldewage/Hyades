@@ -13,7 +13,6 @@ import (
 
 	"html/template"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -130,7 +129,6 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 	descr, _, _ := req.FormFile("workDescr")
 	if !(Env == nil || Envfh == nil) && descr != nil {
 
-		envBytes, _ := ioutil.ReadAll(Env)
 		descrReader := bufio.NewReader(descr)
 
 		job := ss.Jobs().NewJob(user)
@@ -146,9 +144,22 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 		}
 
 		//Save envBytes to file
-		job.Env = envBytes
+		filename := filepath.Join(*configuration.DataPath, "EnvFiles", user.Username, job.Name+"env.zip")
+		file, err := os.Create(filename)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+		_, err = io.Copy(file, Env)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		job.Env = filename
+
 		log.Println("About to call ss.Jobs().AddJob(job)")
-		err := ss.Jobs().AddJob(job)
+		err = ss.Jobs().AddJob(job)
 		if err != nil {
 			log.Println("ss.Jobs().AddJob(job):", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -384,29 +395,19 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 	}
 
 	fm["CountDone"] = func(id string) string {
-		var ID bson.ObjectId
-		err := ID.UnmarshalText([]byte(id))
+
+		job, err := ss.jobs.GetJob(string(id))
 		if err != nil {
-			log.Println("listJobs_CountDone", err, id, ID)
+			log.Println("listJobs_CountDone", err, id)
 			return ""
 		}
-		job, err := ss.jobs.GetJob(string(ID))
-		if err != nil {
-			log.Println("listJobs_CountDone", err, id, ID)
-			return ""
-		}
-		return fmt.Sprint(job.NumPartsDone(ss.jobs.session))
+		return fmt.Sprint(job.NumPartsDone())
 	}
 	fm["totalWork"] = func(id string) string {
-		var ID bson.ObjectId
-		err := ID.UnmarshalText([]byte(id))
+
+		job, err := ss.jobs.GetJob(string(id))
 		if err != nil {
-			log.Println("listJobs_totalWork", err, id, ID)
-			return ""
-		}
-		job, err := ss.jobs.GetJob(string(ID))
-		if err != nil {
-			log.Println("listJobs_totalWork", err, id, ID)
+			log.Println("listJobs_totalWork", err, id)
 			return ""
 		}
 		return fmt.Sprint(len(job.Parts))
@@ -451,28 +452,19 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 	}
 
 	var fm template.FuncMap = make(template.FuncMap)
-	fm["IDToString"] = func(id bson.ObjectId) string {
-		data, err := bson.ObjectId(id).MarshalText()
-		if err != nil {
-			log.Println("jobStatus_IDToString", err, id)
-			return ""
-		}
-		return string(data)
+	fm["IDToString"] = func(id string) string {
+
+		return id
 	}
 
 	fm["CountDone"] = func(id string) string {
-		var ID bson.ObjectId
-		err := ID.UnmarshalText([]byte(id))
+
+		job, err := ss.jobs.GetJob(string(id))
 		if err != nil {
-			log.Println("listJobs_CountDone", err, id, ID)
+			log.Println("listJobs_CountDone", err, id)
 			return ""
 		}
-		job, err := ss.jobs.GetJob(string(ID))
-		if err != nil {
-			log.Println("listJobs_CountDone", err, id, ID)
-			return ""
-		}
-		return fmt.Sprint(job.NumPartsDone(ss.jobs.session))
+		return fmt.Sprint(job.NumPartsDone())
 	}
 	fm["currentTab"] = func() string {
 		return ""
@@ -486,15 +478,7 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 		return
 	}
 
-	var ID bson.ObjectId
-	err = ID.UnmarshalText([]byte(id[0]))
-	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	job, err := ss.jobs.GetJob(string(ID))
+	job, err := ss.jobs.GetJob(string(id[0]))
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -518,9 +502,7 @@ func (ss *SubmitServer) getJobResult(user *Hyades.Person, w http.ResponseWriter,
 		return
 	}
 
-	var bsonID bson.ObjectId
-	bsonID.UnmarshalText([]byte(id[0]))
-	job, err := ss.jobs.GetJob(string(bsonID))
+	job, err := ss.jobs.GetJob(id[0])
 	if err != nil {
 		log.Println("id[0]", id[0])
 		log.Println("getJobResult - ss.jobs.GetJob", err)

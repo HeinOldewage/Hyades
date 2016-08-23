@@ -96,7 +96,12 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		work.SetStatus("Sending work to client " + c.ClientInfo.ComputerName)
 		work.Dispatch(c.ClientInfo)
 
-		comms := work.PartOf().CreateWorkComms(work)
+		comms, err := work.PartOf().CreateWorkComms(work)
+		if err != nil {
+			log.Println("ServiceWork writer.Encode(comms) error", err)
+			c.FrameWorkError(err)
+			return
+		}
 		err = writer.Encode(comms)
 		if err != nil {
 			log.Println("ServiceWork writer.Encode(comms) error", err)

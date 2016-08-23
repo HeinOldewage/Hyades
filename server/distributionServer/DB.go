@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/HeinOldewage/Hyades"
 
 	"database/sql"
@@ -30,42 +32,51 @@ func NewDB(DBFile string) (*DB, error) {
 
 func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 	//transaction this
-	tx, err := db.conn.Begin()
-	if err != nil {
-		return nil, err
-	}
+	for {
+		tx, err := db.conn.Begin()
+		if err != nil {
+			return nil, err
+		}
 
-	res, err := tx.Query("Select * from JOBPARTS where BeingHandled = false and Dispatched = false and Done =false limit 1; ")
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
-	work = new(Hyades.Work)
-	var CurrentClient int
-	res.Scan(work.PartID,
-		work.DispatchTime,
-		work.FinishTime,
-		work.CompletedBy,
-		CurrentClient,
-		work.Done,
-		work.Dispatched,
-		work.BeingHandled,
-		work.FailCount,
-		work.Error,
-		work.Status,
-		work.Command)
+		res, err := tx.Query("Select * from JOBPARTS where (BeingHandled = 0 and Dispatched = 0 and Done = 0) limit 1; ")
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		work = new(Hyades.Work)
+		var CurrentClient int
+		if res.Next() {
+			res.Scan(work.PartID,
+				work.DispatchTime,
+				work.FinishTime,
+				work.CompletedBy,
+				CurrentClient,
+				work.Done,
+				work.Dispatched,
+				work.BeingHandled,
+				work.FailCount,
+				work.Error,
+				work.Status,
+				work.Command)
 
-	res, err = tx.Query("UPDATE JOBPARTS where Id = % set (BeingHandled = true); ", work.PartID)
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
+		} else {
+			tx.Commit()
+			time.Sleep(time.Second)
+			continue
+		}
 
-	tx.Commit()
+		res, err = tx.Query("UPDATE JOBPARTS where Id = ? set (BeingHandled = 1); ", work.PartID)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+
+		tx.Commit()
+	}
 	return work, nil
 }
 func (db *DB) GetCurrentClientID(c *Hyades.ClientInfo) (int, error) {
-	res, err := db.conn.Query("Select Id from CurrentClient where OperatingSystem = % and ComputerName = % ; ", c.OperatingSystem, c.ComputerName)
+	res, err := db.conn.Query("Select Id from CurrentClient where OperatingSystem = ? and ComputerName = ? ; ", c.OperatingSystem, c.ComputerName)
 	if err != nil {
 		return 0, err
 	}
@@ -73,7 +84,7 @@ func (db *DB) GetCurrentClientID(c *Hyades.ClientInfo) (int, error) {
 	if res.Next() {
 		res.Scan(&id)
 	} else {
-		res, err := db.conn.Exec("Insert into CurrentClient (OperatingSystem,ComputerName) values(% , %);", c.OperatingSystem, c.ComputerName)
+		res, err := db.conn.Exec("Insert into CurrentClient (OperatingSystem,ComputerName) values(? , ?);", c.OperatingSystem, c.ComputerName)
 		if err != nil {
 			return 0, err
 		}
@@ -88,7 +99,7 @@ func (db *DB) SaveWork(work *Hyades.Work) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.conn.Exec("UPDATE JOBPARTS (DispatchTime=%, FinishTime = %,	TotalTimeDispatched = %, CompletedBy   = %, CurrentClient = %,	Done = %,	Dispatched  = %, BeingHandled  = %,	FailCount = %,	Error = %,	Status = %, Command = %) WHERE Id=%;",
+	_, err = db.conn.Exec("UPDATE JOBPARTS (DispatchTime=?, FinishTime = ?,	TotalTimeDispatched = ?, CompletedBy   = ?, CurrentClient = ?,	Done = ?,	Dispatched  = ?, BeingHandled  = ?,	FailCount = ?,	Error = ?,	Status = ?, Command = ?) WHERE Id= ?;",
 		work.DispatchTime,
 		work.FinishTime,
 		work.CompletedBy,

@@ -6,6 +6,10 @@ import (
 	"github.com/HeinOldewage/Hyades"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"database/sql"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type UserMap struct {
@@ -13,48 +17,72 @@ type UserMap struct {
 }
 
 func NewUserMap(dbFile string) *UserMap {
-	return &UserMap{dbFile}
+	res := &UserMap{dbFile}
+	res.initDB()
+	return res
 }
 
 func (um *UserMap) addUser(u, p string) (*Hyades.Person, bool) {
 	log.Println("Add User", u, p)
 	Password, _ := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
 
-	find := make(map[string]interface{})
-	find["username"] = u
-
-	n, err := um.session.DB("Hyades").C("Users").Find(find).Count()
-	if err != nil || n != 0 {
-		log.Println("Error, Already exists", err, n)
+	conn, err := sql.Open("sqlite3", um.dbFile)
+	if err != nil {
+		log.Println(err)
 		return nil, false
 	}
-	user := Hyades.Person{Username: u, Password: Password}
-	err = um.session.DB("Hyades").C("Users").Insert(user)
-	log.Println("Inserted result", err, user)
+	defer conn.Close()
+	_, err = conn.Exec("insert into USERS (Username,Password) values ( ? , ? ) ;", u, Password)
+
 	if err != nil {
+		log.Println(err)
 		return nil, false
 	}
 	return um.findUser(u, p)
 }
 
+func (um *UserMap) initDB() error {
+	conn, err := sql.Open("sqlite3", um.dbFile)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	_, err = conn.Exec("Create table if not exists USERS  (Id INTEGER PRIMARY KEY AUTOINCREMENT,Username varchar(255),Password blob,Email varchar(255),Admin TINYINT ,Enabled TINYINT,JobFolder varchar(255) );")
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
 func (um *UserMap) findUser(u, p string) (*Hyades.Person, bool) {
 	log.Println("find User", u, p)
 
-	user := Hyades.Person{}
-	find := make(map[string]interface{})
-	find["username"] = u
-
-	err := um.session.DB("Hyades").C("Users").Find(find).One(&user)
+	conn, err := sql.Open("sqlite3", um.dbFile)
 	if err != nil {
-		log.Println("Cannot find ", find, " due to:", err)
 		return nil, false
+	}
+	defer conn.Close()
+	rows, err := conn.Query("select * from USERS where Username = ?", u)
+
+	if err != nil {
+		return nil, false
+	}
+	user := new(Hyades.Person)
+	for rows.Next() {
+		err = rows.Scan(user.Admin, user.Username, user.Password, user.Email, user.Admin, user.Enabled, user.JobFolder)
+		if err != nil {
+			log.Println(err)
+		}
 	}
 
 	if bcrypt.CompareHashAndPassword(user.Password, []byte(p)) == nil {
 
-		return &user, true
+		return user, true
 	} else {
 
-		return &user, false
+		return user, false
 	}
 }
