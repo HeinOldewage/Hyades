@@ -35,22 +35,21 @@ func NewDB(DBFile string) (*DB, error) {
 
 func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 	//transaction this
-	log.Println("Getting a job")
+	var sleepCounter int = 0
 	var jobId int
 	for {
 		tx, err := db.conn.Begin()
 		if err != nil {
+			tx.Rollback()
 			return nil, err
 		}
-		log.Println("Got transaction")
 
-		res, err := tx.Query("Select OwnerID,Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where (BeingHandled = 0 and Dispatched = 0 and Done = 0) limit 1; ")
+		res, err := tx.Query("Select OwnerID,Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where ((BeingHandled = ? ) and (Dispatched = ? ) and (Done = ? )) limit 1; ", false, false, false)
 		if err != nil {
 			log.Println("Could not select a job", err)
 			tx.Rollback()
 			return nil, err
 		}
-		log.Println("query done")
 		work = new(Hyades.Work)
 
 		if res.Next() {
@@ -71,21 +70,34 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 				tx.Rollback()
 				return nil, err
 			}
+
+			if work.BeingHandled {
+				log.Println("Work is already being handled")
+			}
 		} else {
-			log.Println("No work to hand out")
 			tx.Commit()
-			time.Sleep(time.Second)
+			if sleepCounter < 60 {
+				sleepCounter++
+			}
+			time.Sleep(time.Second * time.Duration(sleepCounter))
 			continue
 		}
 
-		res, err = tx.Query("UPDATE JOBPARTS  set BeingHandled = 1 where Id = ?; ", work.PartID)
+		ures, err := tx.Exec("UPDATE JOBPARTS  set BeingHandled = ? where Id = ?; ", true, work.PartID)
 		if err != nil {
 			log.Println("Could not update a job", err)
 			tx.Rollback()
 			return nil, err
 		}
 
-		tx.Commit()
+		i, _ := ures.RowsAffected()
+		if i != 1 {
+			log.Println("Updating did not affect one row", i)
+		}
+		err = tx.Commit()
+		if err != nil {
+			log.Println("Could not commit job chekout", err)
+		}
 		break
 	}
 	log.Println("Got a jobpart with id", work.PartID)
@@ -96,6 +108,9 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 
 	for _, part := range job.Parts {
 		if part.PartID == work.PartID {
+			if part.BeingHandled {
+				log.Println("Part is being handles after loading")
+			}
 			return part, nil
 		}
 	}

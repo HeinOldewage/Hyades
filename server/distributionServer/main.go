@@ -241,7 +241,7 @@ func (wss *workServerStats) DonePart(info *Hyades.ClientInfo) {
 	atomic.AddInt32(&wss.PartsDone, 1)
 	wss.RLock()
 	defer wss.RUnlock()
-	atomic.AddInt32(&wss.ConnectedClient[info.ComputerName+":"+info.OperatingSystem].PartsDone, 1)
+	//atomic.AddInt32(&wss.ConnectedClient[info.ComputerName+":"+info.OperatingSystem].PartsDone, 1)
 }
 
 func (wss *workServerStats) Announced(info *Hyades.ClientInfo) {
