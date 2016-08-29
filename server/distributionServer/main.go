@@ -26,7 +26,7 @@ var configFilePath *string = flag.String("config", "config.json", "If the config
 
 var configuration ConfigFile = ConfigFile{
 	DataPath: flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
-	DB:       flag.String("DBFile", "db.sql", "Sqlite db file"),
+	DB:       flag.String("DBFile", "../jobs.db", "Sqlite db file"),
 }
 
 func main() {
@@ -171,7 +171,7 @@ func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) error {
 	//StdOut.txt
 	//ErrOut.txtlogFile
 
-	folder := filepath.Join(ws.dataPath, w.PartOf().JobFolder, w.PartOf().Name, strconv.Itoa(w.Index()))
+	folder := filepath.Join(ws.dataPath, w.PartOf().JobFolder, w.PartOf().Name+fmt.Sprint(w.PartOf().Id), strconv.Itoa(w.Index()))
 	err := os.MkdirAll(folder, os.ModeDir|os.ModePerm)
 	if err != nil {
 		ws.Log.Println(err)

@@ -35,7 +35,7 @@ var configFilePath *string = flag.String("config", "config.json", "If the config
 var configuration ConfigFile = ConfigFile{
 	DataPath:      flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
 	ServerAddress: flag.String("address", ":8088", "The folder that the distribution server saves the data"),
-	DB:            flag.String("DBFile", "db.sql", "Sqlite db file"),
+	DB:            flag.String("DBFile", "../jobs.db", "Sqlite db file"),
 }
 
 func main() {
@@ -144,15 +144,20 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 		}
 
 		//Save envBytes to file
-		filename := filepath.Join(*configuration.DataPath, "EnvFiles", user.Username, job.Name+"env.zip")
+		folder := filepath.Join(*configuration.DataPath, "EnvFiles", user.Username)
+		os.MkdirAll(folder, os.ModePerm|os.ModeDir)
+		filename := filepath.Join(folder, job.Name+fmt.Sprint(time.Now().Unix())+"env.zip")
+
 		file, err := os.Create(filename)
 		if err != nil {
+			log.Println("(ss *SubmitServer) submitJob, Create", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer file.Close()
 		_, err = io.Copy(file, Env)
 		if err != nil {
+			log.Println(" (ss *SubmitServer) submitJob", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -165,7 +170,7 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		log.Println("Job created")
+		log.Println("Job created", job.Id)
 	} else {
 
 		log.Println("File not correctly uploaded")
@@ -394,18 +399,18 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 		return strconv.Itoa(id)
 	}
 
-	fm["CountDone"] = func(id string) string {
+	fm["CountDone"] = func(id int) string {
 
-		job, err := ss.jobs.GetJob(string(id))
+		job, err := ss.jobs.GetJob(fmt.Sprint(id))
 		if err != nil {
 			log.Println("listJobs_CountDone", err, id)
 			return ""
 		}
 		return fmt.Sprint(job.NumPartsDone())
 	}
-	fm["totalWork"] = func(id string) string {
+	fm["totalWork"] = func(id int) string {
 
-		job, err := ss.jobs.GetJob(string(id))
+		job, err := ss.jobs.GetJob(fmt.Sprint(id))
 		if err != nil {
 			log.Println("listJobs_totalWork", err, id)
 			return ""
@@ -452,14 +457,14 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 	}
 
 	var fm template.FuncMap = make(template.FuncMap)
-	fm["IDToString"] = func(id string) string {
+	fm["IDToString"] = func(id int) string {
 
-		return id
+		return fmt.Sprint(id)
 	}
 
-	fm["CountDone"] = func(id string) string {
+	fm["CountDone"] = func(id int) string {
 
-		job, err := ss.jobs.GetJob(string(id))
+		job, err := ss.jobs.GetJob(fmt.Sprint(id))
 		if err != nil {
 			log.Println("listJobs_CountDone", err, id)
 			return ""
@@ -512,9 +517,9 @@ func (ss *SubmitServer) getJobResult(user *Hyades.Person, w http.ResponseWriter,
 	log.Println("job.JobFolder", job.JobFolder)
 	log.Println("user.Username", user.Username)
 
-	TempJobFolder := filepath.Join(*configuration.DataPath, job.JobFolder, job.Name)
+	TempJobFolder := filepath.Join(*configuration.DataPath, job.JobFolder, job.Name+fmt.Sprint(job.Id))
 
-	zipedfilePath := filepath.Join(*configuration.DataPath, job.JobFolder, "Job"+job.Name+".zip")
+	zipedfilePath := filepath.Join(*configuration.DataPath, job.JobFolder, "Job"+job.Name+fmt.Sprint(job.Id)+".zip")
 	log.Println("Creating zip at", zipedfilePath)
 	zipedFile, err := os.OpenFile(zipedfilePath, os.O_RDWR|os.O_CREATE, os.ModePerm)
 	if err != nil {

@@ -3,6 +3,6 @@
 	<br>
 	<a href="JobStatus?id={{IDToString .Id}}">{{.Name}} </a>
 	<br>
-	({{ CountDone (IDToString .Id)}} of {{totalWork (IDToString .Id)}} complete)
+	({{ CountDone  .Id}} of {{totalWork  .Id}} complete)
 	</p></li>
 </div>

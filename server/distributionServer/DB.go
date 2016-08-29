@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/HeinOldewage/Hyades"
@@ -17,7 +19,7 @@ type DB struct {
 
 func NewDB(DBFile string) (*DB, error) {
 
-	conn, err := sql.Open("sqlite3", DBFile)
+	conn, err := sql.Open("sqlite3", "file:"+DBFile+"?_loc=auto")
 	if err != nil {
 		return nil, err
 	}
@@ -32,50 +34,78 @@ func NewDB(DBFile string) (*DB, error) {
 
 func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 	//transaction this
+	log.Println("Getting a job")
+	var jobId int
 	for {
 		tx, err := db.conn.Begin()
 		if err != nil {
 			return nil, err
 		}
+		log.Println("Got transaction")
 
-		res, err := tx.Query("Select * from JOBPARTS where (BeingHandled = 0 and Dispatched = 0 and Done = 0) limit 1; ")
+		res, err := tx.Query("Select OwnerID,Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where (BeingHandled = 0 and Dispatched = 0 and Done = 0) limit 1; ")
 		if err != nil {
+			log.Println("Could not select a job", err)
 			tx.Rollback()
 			return nil, err
 		}
+		log.Println("query done")
 		work = new(Hyades.Work)
-		var CurrentClient int
-		if res.Next() {
-			res.Scan(work.PartID,
-				work.DispatchTime,
-				work.FinishTime,
-				work.CompletedBy,
-				CurrentClient,
-				work.Done,
-				work.Dispatched,
-				work.BeingHandled,
-				work.FailCount,
-				work.Error,
-				work.Status,
-				work.Command)
 
+		if res.Next() {
+			err := res.Scan(&jobId,
+				&work.PartID,
+				&work.DispatchTime,
+				&work.FinishTime,
+				&work.TotalTimeDispatched,
+				&work.Done,
+				&work.Dispatched,
+				&work.BeingHandled,
+				&work.FailCount,
+				&work.Error,
+				&work.Status,
+				&work.Command)
+			if err != nil {
+				log.Println("Could not scan a job", err)
+				tx.Rollback()
+				return nil, err
+			}
 		} else {
+			log.Println("No work to hand out")
 			tx.Commit()
 			time.Sleep(time.Second)
 			continue
 		}
 
-		res, err = tx.Query("UPDATE JOBPARTS where Id = ? set (BeingHandled = 1); ", work.PartID)
+		res, err = tx.Query("UPDATE JOBPARTS  set BeingHandled = 1 where Id = ?; ", work.PartID)
 		if err != nil {
+			log.Println("Could not update a job", err)
 			tx.Rollback()
 			return nil, err
 		}
 
 		tx.Commit()
+		break
 	}
-	return work, nil
+	log.Println("Got a jobpart with id", work.PartID)
+	job, err := db.GetJob(jobId)
+	if err != nil {
+		log.Println(err)
+	}
+
+	for _, part := range job.Parts {
+		if part.PartID == work.PartID {
+			return part, nil
+		}
+	}
+
+	return nil, fmt.Errorf("Could not find work in job %i", work.PartID)
 }
+
 func (db *DB) GetCurrentClientID(c *Hyades.ClientInfo) (int, error) {
+	if c == nil {
+		return 0, nil
+	}
 	res, err := db.conn.Query("Select Id from CurrentClient where OperatingSystem = ? and ComputerName = ? ; ", c.OperatingSystem, c.ComputerName)
 	if err != nil {
 		return 0, err
@@ -93,16 +123,60 @@ func (db *DB) GetCurrentClientID(c *Hyades.ClientInfo) (int, error) {
 	return int(id), nil
 }
 
+func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto")
+	if err != nil {
+		return nil, err
+	}
+	res, err := conn.Query("Select * from JOBS where ID = ?", id)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	job = new(Hyades.Job)
+	if res.Next() {
+		res.Scan(&job.Id, &job.OwnerID, &job.Name, &job.JobFolder, &job.Env, &job.ReturnEnv)
+	}
+
+	partres, err := conn.Query("Select Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where OwnerID = ?", job.Id)
+	if err != nil {
+		log.Println(err)
+	}
+	for partres.Next() {
+		var part *Hyades.Work = Hyades.NewWork(job)
+
+		err := partres.Scan(&part.PartID, &part.DispatchTime, &part.FinishTime, &part.TotalTimeDispatched, &part.Done, &part.Dispatched, &part.BeingHandled, &part.FailCount, &part.Error, &part.Status, &part.Command)
+		if err != nil {
+			log.Println("partres.Scan", err)
+		}
+		paramres, err := conn.Query("Select Parameters from Parameters where JOBPARTSID = ?", part.PartID)
+		for paramres.Next() {
+			var param string
+			err := paramres.Scan(&param)
+			if err != nil {
+				log.Println("paramres.Scan", err)
+			}
+			part.Parameters = append(part.Parameters, param)
+		}
+	}
+
+	if partres.Err() != nil {
+		log.Println(partres.Err())
+	}
+
+	return job, err
+}
+
 func (db *DB) SaveWork(work *Hyades.Work) error {
 
 	CurrentClient, err := db.GetCurrentClientID(work.CurrentClient)
 	if err != nil {
 		return err
 	}
-	_, err = db.conn.Exec("UPDATE JOBPARTS (DispatchTime=?, FinishTime = ?,	TotalTimeDispatched = ?, CompletedBy   = ?, CurrentClient = ?,	Done = ?,	Dispatched  = ?, BeingHandled  = ?,	FailCount = ?,	Error = ?,	Status = ?, Command = ?) WHERE Id= ?;",
+	_, err = db.conn.Exec("UPDATE JOBPARTS set DispatchTime= ?, FinishTime = ?,	TotalTimeDispatched = ?,  CurrentClient = ?,	Done = ?,	Dispatched  = ?, BeingHandled  = ?,	FailCount = ?,	Error = ?,	Status = ?, Command = ? WHERE Id= ?;",
 		work.DispatchTime,
 		work.FinishTime,
-		work.CompletedBy,
+		work.TotalTimeDispatched,
 		CurrentClient,
 		work.Done,
 		work.Dispatched,
@@ -110,23 +184,24 @@ func (db *DB) SaveWork(work *Hyades.Work) error {
 		work.FailCount,
 		work.Error,
 		work.Status,
-		work.Command)
+		work.Command,
+		work.PartID)
 	return err
 }
 
 func (db *DB) initDB() error {
-	conn, err := sql.Open("sqlite3", db.dbFile)
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto")
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	_, err = conn.Exec("Create table if not exists JOBS  (Id INTEGER PRIMARY KEY AUTOINCREMENT,OwnerID INTEGER,Name varchar(255),Env varchar(255),ReturnEnv TINYINT  );")
+	_, err = conn.Exec("Create table if not exists JOBS  (Id INTEGER PRIMARY KEY AUTOINCREMENT,OwnerID INTEGER,Name varchar(255),JobFolder varchar(500),Env varchar(500),ReturnEnv TINYINT  );")
 
 	if err != nil {
 		return err
 	}
 
-	_, err = conn.Exec("Create table  if not exists JOBPARTS (Id INTEGER PRIMARY KEY AUTOINCREMENT,OwnerID INTEGER,DispatchTime REAL, FinishTime REAL,	TotalTimeDispatched REAL, CompletedBy   Integer, CurrentClient Integer,	Done TINYINT,	Dispatched  TINYINT, BeingHandled  TINYINT,	FailCount Integer,	Error varchar(500),	Status varchar(500), Command varchar(500));")
+	_, err = conn.Exec("Create table  if not exists JOBPARTS (Id INTEGER PRIMARY KEY AUTOINCREMENT,OwnerID INTEGER,DispatchTime datetime, FinishTime datetime,	TotalTimeDispatched INTEGER, CompletedBy   Integer, CurrentClient Integer,	Done TINYINT,	Dispatched  TINYINT, BeingHandled  TINYINT,	FailCount Integer,	Error varchar(500),	Status varchar(500), Command varchar(500));")
 
 	if err != nil {
 		return err

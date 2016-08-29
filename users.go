@@ -1,9 +1,10 @@
 package Hyades
 
 type Person struct {
-	Id        int
-	Username  string
-	Password  []byte //SHA512 hash?
+	Id       int
+	Username string
+	//hash
+	Password  []byte
 	Email     string
 	Admin     bool
 	Enabled   bool

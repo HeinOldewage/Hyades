@@ -29,3 +29,4 @@ server/distributionServer/distributionServer
 client/Env
 server/distributionServer/log.txt
 server/distributionServer/userData
+*.db

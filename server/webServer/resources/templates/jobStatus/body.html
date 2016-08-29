@@ -1,10 +1,10 @@
 <div style="background-color:#ffffff;border-radius: 4px 4px 4px 4px;border: 1px solid #000000;">
 						<p>Job number:{{IDToString .Id}}</p>
-						Done: {{CountDone (IDToString .Id)}}/{{len .Parts}}<br>
-						<progress value="{{CountDone (IDToString .Id)}}" max="{{len .Parts}}"></progress>
+						Done: {{CountDone .Id}}/{{len .Parts}}<br>
+						<progress value="{{CountDone .Id}}" max="{{len .Parts}}"></progress>
 						<br>
-						<button onclick="stop()" >Stop</button>
-						<button onclick="start()" >Start</button>
+						<!--button onclick="stop()" >Stop</button>
+						<button onclick="start()" >Start</button-->
 						</div>
 						
 						<div style="background-color:#ffffff;border-radius: 4px 4px 4px 4px;border: 1px solid #000000;overflow:hidden;padding:5px">

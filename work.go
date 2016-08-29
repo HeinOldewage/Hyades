@@ -31,8 +31,13 @@ type Job struct {
 }
 
 func (j *Job) NumPartsDone() int32 {
-
-	return 0
+	res := 0
+	for _, part := range j.Parts {
+		if part.Done {
+			res++
+		}
+	}
+	return int32(res)
 }
 
 func (j *Job) AddWork(w *Work) {
@@ -85,11 +90,9 @@ type WorkComms struct {
 	}
 }
 
-func NewWork(partOf *Job, partId int32, Cmd string) *Work {
+func NewWork(partOf *Job) *Work {
 	work := &Work{
 		partOf:    partOf,
-		PartID:    partId,
-		Command:   Cmd,
 		FailCount: 0,
 		Done:      false,
 		Status:    "",

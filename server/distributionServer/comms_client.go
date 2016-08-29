@@ -89,6 +89,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		work, err := c.Owner.getWork()
 		if err != nil {
 			log.Println(err)
+			continue
 		}
 		log.Println("got work from job", work.PartOf().Id)
 		c.Work = work
