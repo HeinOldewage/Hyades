@@ -2,7 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"os"
+
+	"path/filepath"
 
 	"github.com/HeinOldewage/Hyades"
 
@@ -10,11 +14,18 @@ import (
 )
 
 type JobMap struct {
-	dbFile string
+	session *sql.DB
+	dbFile  string
 }
 
 func NewJobMap(dbFile string) *JobMap {
-	return &JobMap{dbFile}
+	res := &JobMap{dbFile: dbFile}
+	conn, err := sql.Open("sqlite3", "file:"+dbFile+"?_loc=auto")
+	if err != nil {
+		return nil
+	}
+	res.session = conn
+	return res
 }
 
 func (jm *JobMap) NewJob(user *Hyades.Person) *Hyades.Job {
@@ -172,4 +183,43 @@ func (jm *JobMap) AddJob(job *Hyades.Job) error {
 
 	trans.Commit()
 	return nil
+}
+
+func (jm *JobMap) Delete(job *Hyades.Job, datapath string) error {
+	os.RemoveAll(job.Env)
+
+	os.RemoveAll(filepath.Join(datapath, job.JobFolder, job.Name+fmt.Sprint(job.Id)))
+	os.RemoveAll(filepath.Join(datapath, job.JobFolder, "Job"+job.Name+fmt.Sprint(job.Id)+".zip"))
+	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto")
+	if err != nil {
+		return err
+	}
+	trans, err := conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer trans.Rollback()
+
+	_, err = trans.Exec("delete from JOBS where ID = ? ;", &job.Id)
+	if err != nil {
+		return err
+	}
+
+	for _, part := range job.Parts {
+
+		_, err := trans.Exec("delete from JOBPARTS where OwnerID = ? ;", &job.Id)
+		if err != nil {
+			return err
+		}
+
+		_, err = trans.Exec("delete from Parameters where JOBPARTSID = ?  ;", part.PartID)
+		if err != nil {
+			return err
+		}
+
+	}
+
+	trans.Commit()
+	return nil
+
 }

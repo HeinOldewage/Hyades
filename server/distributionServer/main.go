@@ -157,7 +157,9 @@ func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) error 
 	if err != nil {
 		return err
 	}
+
 	work.SetStatus("Work done")
+
 	//work.PartOf().Save(ws.db.session)
 	return nil
 }

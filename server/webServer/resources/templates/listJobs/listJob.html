@@ -2,7 +2,9 @@
 <li class="prettyLi"><span class="prettySpan"></span><p class="prettyP">
 	<br>
 	<a href="JobStatus?id={{IDToString .Id}}">{{.Name}} </a>
-	<br>
-	({{ CountDone  .Id}} of {{totalWork  .Id}} complete)
-	</p></li>
+
+	<span>({{ CountDone  .Id}} of {{totalWork  .Id}} complete)<button onclick="deleteJob({{.Id}})">Delete</button></span>
+	</p>
+	</li>
+
 </div>

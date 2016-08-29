@@ -26,6 +26,7 @@ func NewDB(DBFile string) (*DB, error) {
 
 	res := &DB{dbFile: DBFile, conn: conn}
 	err = res.initDB()
+
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +142,7 @@ func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
 	partres, err := conn.Query("Select Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where OwnerID = ?", job.Id)
 	if err != nil {
 		log.Println(err)
+
 	}
 	for partres.Next() {
 		var part *Hyades.Work = Hyades.NewWork(job)

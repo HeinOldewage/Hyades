@@ -161,8 +161,12 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	log.Println("Err", string(errBuf.Bytes()), len(errBuf.Bytes()))
 
 	if err != nil {
-		log.Println("Error running command:", err)
-		res.Error = "Error running command:" + err.Error()
+		if _, ok := err.(*exec.ExitError); !ok {
+
+			log.Println("Error running command:", err)
+			res.Error = "Error running command:" + err.Error()
+		}
+
 		return
 	}
 	cmd.StdoutPipe()

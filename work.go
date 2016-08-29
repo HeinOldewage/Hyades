@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+
 	"time"
 )
 
@@ -181,7 +182,6 @@ func (w *Work) MarshalJSON() ([]byte, error) {
 }
 
 func (w *Work) Save() error {
-
 	return nil
 }
 
@@ -231,6 +231,7 @@ func (j *Job) Save() error {
 }
 
 func (j *Job) CreateWorkComms(w *Work) (*WorkComms, error) {
+
 	res := WorkComms{}
 	file, err := os.Open(j.Env)
 	if err != nil {

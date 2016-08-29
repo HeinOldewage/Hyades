@@ -101,6 +101,8 @@ func (ss *SubmitServer) Listen() {
 	http.HandleFunc("/start", ss.securePage(ss.startJob))
 	http.HandleFunc("/Jobs", ss.securePage(ss.listJobs))
 	http.HandleFunc("/JobStatus", ss.securePage(ss.jobStatus))
+	http.HandleFunc("/DeleteJob", ss.securePage(ss.deleteJob))
+
 	http.HandleFunc("/GetJobResult", ss.securePage(ss.getJobResult))
 	http.HandleFunc("/CreateJob", ss.securePage(ss.createJob))
 	http.HandleFunc("/Help", ss.securePage(ss.help))
@@ -494,6 +496,31 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 
 	if err != nil {
 		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (ss *SubmitServer) deleteJob(user *Hyades.Person, w http.ResponseWriter, req *http.Request) {
+	log.Println("deleteJob")
+	req.ParseForm()
+	id, ok := req.Form["id"]
+	if !ok {
+		http.Error(w, "Job id not provided", http.StatusNotFound)
+		return
+	}
+	job, err := ss.jobs.GetJob(id[0])
+	if err != nil {
+		log.Println("id[0]", id[0])
+		log.Println("getJobResult - ss.jobs.GetJob", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = ss.Jobs().Delete(job, *configuration.DataPath)
+	if err != nil {
+		log.Println("id[0]", id[0])
+		log.Println("getJobResult - ss.jobs.GetJob", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

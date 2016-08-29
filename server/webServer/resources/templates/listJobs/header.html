@@ -100,6 +100,26 @@
 			})*/
 		 }
 	
+	
+			function deleteJob(id) {
+					return		$.ajax({
+					url: 'DeleteJob',
+					type: 'GET',
+					async: true,
+					cache: false,
+					data: {
+							id : id
+						},
+					contentType: false,
+					processData: true,
+					success: function(retId){
+						location.reload(true);
+					},
+					error: function(err){
+						alert("failed to delete Job",err);
+					}
+				});
+			}
 	Observe('Jobs/JobObservers',function(list) {
 			if ( list.length >0 ){
 						location.reload();
