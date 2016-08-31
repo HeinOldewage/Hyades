@@ -220,6 +220,11 @@ func (db *DB) initDB() error {
 	if err != nil {
 		return err
 	}
+
+	_, err = conn.Query("UPDATE JOBPARTS  set BeingHandled = ?; ", false)
+	if err != nil {
+		return err
+	}
 	return nil
 
 }
