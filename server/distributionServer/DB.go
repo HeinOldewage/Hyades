@@ -19,7 +19,7 @@ type DB struct {
 
 func NewDB(DBFile string) (*DB, error) {
 
-	conn, err := sql.Open("sqlite3", "file:"+DBFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+DBFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func (db *DB) GetCurrentClientID(c *Hyades.ClientInfo) (int, error) {
 }
 
 func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
-	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +207,7 @@ func (db *DB) SaveWork(work *Hyades.Work) error {
 }
 
 func (db *DB) initDB() error {
-	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return err
 	}
@@ -232,6 +232,11 @@ func (db *DB) initDB() error {
 
 	_, err = conn.Exec("Create table if not exists CurrentClient  (Id INTEGER PRIMARY KEY AUTOINCREMENT,OperatingSystem varchar(100), ComputerName varchar(100));")
 
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Query("UPDATE JOBPARTS  set BeingHandled = ?; ", false)
 	if err != nil {
 		return err
 	}
