@@ -19,7 +19,7 @@ type DB struct {
 
 func NewDB(DBFile string) (*DB, error) {
 
-	conn, err := sql.Open("sqlite3", "file:"+DBFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+DBFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (db *DB) GetCurrentClientID(c *Hyades.ClientInfo) (int, error) {
 }
 
 func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
-	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func (db *DB) SaveWork(work *Hyades.Work) error {
 }
 
 func (db *DB) initDB() error {
-	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return err
 	}

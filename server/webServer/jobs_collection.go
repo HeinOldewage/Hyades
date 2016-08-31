@@ -20,7 +20,7 @@ type JobMap struct {
 
 func NewJobMap(dbFile string) *JobMap {
 	res := &JobMap{dbFile: dbFile}
-	conn, err := sql.Open("sqlite3", "file:"+dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return nil
 	}
@@ -33,7 +33,7 @@ func (jm *JobMap) NewJob(user *Hyades.Person) *Hyades.Job {
 }
 
 func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
-	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
 }
 
 func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
-	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
 }
 
 func (jm *JobMap) AddJob(job *Hyades.Job) error {
-	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func (jm *JobMap) Delete(job *Hyades.Job, datapath string) error {
 
 	os.RemoveAll(filepath.Join(datapath, job.JobFolder, job.Name+fmt.Sprint(job.Id)))
 	os.RemoveAll(filepath.Join(datapath, job.JobFolder, "Job"+job.Name+fmt.Sprint(job.Id)+".zip"))
-	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return err
 	}

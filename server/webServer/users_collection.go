@@ -26,7 +26,7 @@ func (um *UserMap) addUser(u, p string) (*Hyades.Person, bool) {
 	log.Println("Add User", u, p)
 	Password, _ := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
 
-	conn, err := sql.Open("sqlite3", "file:"+um.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+um.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		log.Println(err)
 		return nil, false
@@ -42,7 +42,7 @@ func (um *UserMap) addUser(u, p string) (*Hyades.Person, bool) {
 }
 
 func (um *UserMap) initDB() error {
-	conn, err := sql.Open("sqlite3", "file:"+um.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+um.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (um *UserMap) initDB() error {
 func (um *UserMap) findUser(u, p string) (*Hyades.Person, bool) {
 	log.Println("find User", u, p)
 
-	conn, err := sql.Open("sqlite3", "file:"+um.dbFile+"?_loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+um.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return nil, false
 	}
