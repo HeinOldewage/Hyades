@@ -35,7 +35,8 @@
 									},
 									"1px solid red");
 									
-			
+			   var bar = $('.bar');
+    		var percent = $('.percent');
 		 function tryCreateJob() {
 			
 			var formData = new FormData();
@@ -56,7 +57,21 @@
 				},
 				error: function(){
 					alert("error in ajax form submission");
-				}
+				},
+				 xhr: function () {
+				        var xhr = $.ajaxSettings.xhr();
+				        xhr.upload.onprogress = function (e) {
+				            if (e.lengthComputable) {
+								percentComplete = e.loaded / e.total
+				                console.log(e.loaded / e.total *100);
+						var percentVal =percentComplete + '%';
+						 bar.width(percentVal);
+			            percent.html(percentVal);
+				            }
+				        };
+				        return xhr;
+				    }
+   }
 			});
 			/*.done(	function() {
 				alert("Done");

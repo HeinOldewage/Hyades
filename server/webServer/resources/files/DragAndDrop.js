@@ -75,6 +75,8 @@ if(window.FileReader) {
 		}
 }
 function DragUpload(elemID,url,successFunc) {
+
+
 	DragSave(elemID,function(file) {
 		var formData = new FormData({EmailFile:file});
 		formData.append('File',file,file.name);
@@ -90,9 +92,11 @@ function DragUpload(elemID,url,successFunc) {
 			error: function(){
 				alert("error in ajax form submission");
 			}
+			
 		});
 	})
 }
+
 
 
 function addEventHandler(obj, evt, handler) {
