@@ -57,6 +57,31 @@ func (um *UserMap) initDB() error {
 
 }
 
+func (um *UserMap) getUser(u string) *Hyades.Person {
+
+	conn, err := sql.Open("sqlite3", "file:"+um.dbFile+"?_loc=auto&_busy_timeout=60000")
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+	rows, err := conn.Query("select * from USERS where Username = ?", u)
+
+	if err != nil {
+		return nil
+	}
+	user := new(Hyades.Person)
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(&user.Id, &user.Username, &user.Password, &user.Email, &user.Admin, &user.Enabled, &user.JobFolder)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+
+	return user
+
+}
+
 func (um *UserMap) findUser(u, p string) (*Hyades.Person, bool) {
 	log.Println("find User", u, p)
 
@@ -71,13 +96,16 @@ func (um *UserMap) findUser(u, p string) (*Hyades.Person, bool) {
 		return nil, false
 	}
 	user := new(Hyades.Person)
+	defer closeQuery(rows)
 	for rows.Next() {
-		err = rows.Scan(&user.Admin, &user.Username, &user.Password, &user.Email, &user.Admin, &user.Enabled, &user.JobFolder)
+		//Id ,Username ,Password ,Email Admin  ,Enabled ,JobFolder
+		err = rows.Scan(&user.Id, &user.Username, &user.Password, &user.Email, &user.Admin, &user.Enabled, &user.JobFolder)
 		if err != nil {
 			log.Println(err)
 		}
-	}
 
+		log.Println("Found user", user)
+	}
 	if bcrypt.CompareHashAndPassword(user.Password, []byte(p)) == nil {
 
 		return user, true

@@ -94,7 +94,7 @@ func ServiceWork(wr io.ReadWriter) {
 		go DoWork(work, workResults)
 
 		res := <-workResults
-		log.Printf("DoWork done %T %v \n", res, res)
+		log.Printf("DoWork done %T  \n", res)
 		err = writer.Encode(res)
 		if err != nil {
 			log.Println("ServiceWork Encode", err)

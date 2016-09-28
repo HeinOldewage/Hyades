@@ -22,6 +22,10 @@ import (
 	"time"
 
 	"github.com/gorilla/sessions"
+
+	"github.com/boltdb/bolt"
+	"github.com/yosssi/boltstore/reaper"
+	"github.com/yosssi/boltstore/store"
 )
 
 type ConfigFile struct {
@@ -68,13 +72,13 @@ func main() {
 const usersFileName string = "users.gob"
 
 type SubmitServer struct {
-	Address        string
-	JobServer      interface{}
-	Cookiestore    *sessions.CookieStore
-	sessionUserMap map[string]*Hyades.Person
+	Address     string
+	JobServer   interface{}
+	Cookiestore *sessions.CookieStore
 
-	jobs  *JobMap
-	users *UserMap
+	jobs   *JobMap
+	users  *UserMap
+	boltDB *bolt.DB
 }
 
 func NewSubmitServer(Address string, dbFile string) *SubmitServer {
@@ -84,12 +88,18 @@ func NewSubmitServer(Address string, dbFile string) *SubmitServer {
 	userMap := NewUserMap(dbFile)
 
 	defer log.Println("NewSubmitServer Done")
+
+	// Open a Bolt database.
+	db, err := bolt.Open("./sessions.db", 0666, nil)
+	if err != nil {
+		panic(err)
+	}
 	return &SubmitServer{Address,
 		nil,
 		sessions.NewCookieStore([]byte("ForTheUnity")),
-		make(map[string]*Hyades.Person),
 		NewJobMap(dbFile),
 		userMap,
+		db,
 	}
 
 }
@@ -120,6 +130,9 @@ func (ss *SubmitServer) Listen() {
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("resources/files"))))
 
 	log.Println("Starting SubmitServer")
+
+	defer reaper.Quit(reaper.Run(ss.boltDB, reaper.Options{}))
+
 	err := http.ListenAndServe(ss.Address, nil)
 	if err != nil {
 		panic(err)
@@ -669,15 +682,13 @@ func (ss *SubmitServer) newUser(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	u, ok := ss.users.addUser(req.PostForm["Name"][0], req.PostForm["Password"][0])
+	_, ok := ss.users.addUser(req.PostForm["Name"][0], req.PostForm["Password"][0])
 
 	if ok {
 		log.Println("New user added")
 
 		sessID := strconv.FormatInt(time.Now().Unix(), 10)
 		session.Values["sessID"] = sessID
-
-		ss.sessionUserMap[sessID] = u
 
 		log.Println("!!New session!!")
 	} else {
@@ -688,11 +699,20 @@ func (ss *SubmitServer) newUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (ss *SubmitServer) loginUser(w http.ResponseWriter, req *http.Request) {
-	session, err := ss.Cookiestore.New(req, "Session")
 
+	str, err := store.New(ss.boltDB, store.Config{}, []byte("secret-key"))
 	if err != nil {
+
+		log.Println(err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 
+		return
+	}
+	session, err := str.New(req, "session")
+
+	if err != nil {
+		log.Println("str.New(req, Session)", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 	req.ParseForm()
@@ -705,25 +725,34 @@ func (ss *SubmitServer) loginUser(w http.ResponseWriter, req *http.Request) {
 	u, ok := ss.users.findUser(req.PostForm["Name"][0], req.PostForm["Password"][0])
 
 	if ok {
-
-		sessID := strconv.FormatInt(time.Now().Unix(), 10)
-		session.Values["sessID"] = sessID
-
-		ss.sessionUserMap[sessID] = u
+		session.Values["sessID"] = u.Username
+		// Create a session.
 
 		log.Println("!!New session!!")
 	} else {
 		log.Println("!!Invalid username/password on login!!")
 		http.Error(w, "Not a valid username or password", http.StatusUnauthorized)
 	}
-	session.Save(req, w)
+	if err := session.Save(req, w); err != nil {
+		log.Println("Saving session failed")
+	}
 }
 
 func (ss *SubmitServer) securePage(toRun func(runuser *Hyades.Person, w http.ResponseWriter, req *http.Request)) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
-		session, err := ss.Cookiestore.Get(req, "Session")
+		str, err := store.New(ss.boltDB, store.Config{}, []byte("secret-key"))
 		if err != nil {
+
+			log.Println("securePage store.New", req.URL.Path, "err:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		session, err := str.Get(req, "session")
+		if err != nil {
+
 			log.Println("securePage", req.URL.Path, "err:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		if SessIDut, ok := session.Values["sessID"]; ok {
 
@@ -735,8 +764,9 @@ func (ss *SubmitServer) securePage(toRun func(runuser *Hyades.Person, w http.Res
 				http.Error(w, "SessID invalid type", http.StatusInternalServerError)
 			}
 
-			runuser, ok := ss.sessionUserMap[SessID]
-			if ok {
+			//runuser, ok := ss.sessionUserMap[SessID]
+			runuser := ss.users.getUser(SessID)
+			if runuser != nil {
 				toRun(runuser, w, req)
 			} else {
 				javascriptredirect(w, "/?to="+req.URL.RequestURI())
@@ -745,6 +775,7 @@ func (ss *SubmitServer) securePage(toRun func(runuser *Hyades.Person, w http.Res
 			}
 
 		} else {
+			log.Println("Can't get session ID")
 			javascriptredirect(w, "/?to="+req.URL.RequestURI())
 			//http.Error(w, "/", http.StatusTemporaryRedirect )
 		}

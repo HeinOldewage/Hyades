@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/HeinOldewage/Hyades"
@@ -13,8 +14,9 @@ import (
 )
 
 type DB struct {
-	conn   *sql.DB
+	sync.Mutex
 	dbFile string
+	conn   *sql.DB
 }
 
 func NewDB(DBFile string) (*DB, error) {
@@ -27,6 +29,8 @@ func NewDB(DBFile string) (*DB, error) {
 	res := &DB{dbFile: DBFile, conn: conn}
 	err = res.initDB()
 
+	res.GetCurrentClientID(&Hyades.ClientInfo{"H", "W"})
+	res.GetCurrentClientID(&Hyades.ClientInfo{"H", "W"})
 	if err != nil {
 		return nil, err
 	}
@@ -34,73 +38,33 @@ func NewDB(DBFile string) (*DB, error) {
 }
 
 func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
+	db.Lock()
+	defer db.Unlock()
+	log.Println("(db *DB) GetNextJob() start")
 	//transaction this
 	var sleepCounter int = 0
 	var jobId int
 	for {
-		tx, err := db.conn.Begin()
+		var err error
+		var ok bool
+		log.Println("Trying to get a job")
+
+		work, jobId, err, ok = db.tryGetJob()
+		log.Println("tryGetJob returned")
 		if err != nil {
-			tx.Rollback()
-			return nil, err
-		}
-
-		res, err := tx.Query("Select OwnerID,Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where ((BeingHandled = ? ) and (Dispatched = ? ) and (Done = ? )) limit 1; ", false, false, false)
-		if err != nil {
-			log.Println("Could not select a job", err)
-			tx.Rollback()
-			return nil, err
-		}
-		work = new(Hyades.Work)
-
-		if res.Next() {
-			err := res.Scan(&jobId,
-				&work.PartID,
-				&work.DispatchTime,
-				&work.FinishTime,
-				&work.TotalTimeDispatched,
-				&work.Done,
-				&work.Dispatched,
-				&work.BeingHandled,
-				&work.FailCount,
-				&work.Error,
-				&work.Status,
-				&work.Command)
-			if err != nil {
-				log.Println("Could not scan a job", err)
-				tx.Rollback()
-				return nil, err
-			}
-
-			if work.BeingHandled {
-				log.Println("Work is already being handled")
-			}
+			log.Println("(db *DB) GetNextJob()", err)
+		} else if ok {
+			break
 		} else {
-			tx.Commit()
 			if sleepCounter < 60 {
 				sleepCounter++
 			}
 			time.Sleep(time.Second * time.Duration(sleepCounter))
-			continue
 		}
 
-		ures, err := tx.Exec("UPDATE JOBPARTS  set BeingHandled = ? where Id = ?; ", true, work.PartID)
-		if err != nil {
-			log.Println("Could not update a job", err)
-			tx.Rollback()
-			return nil, err
-		}
-
-		i, _ := ures.RowsAffected()
-		if i != 1 {
-			log.Println("Updating did not affect one row", i)
-		}
-		err = tx.Commit()
-		if err != nil {
-			log.Println("Could not commit job chekout", err)
-		}
-		break
 	}
 	log.Println("Got a jobpart with id", work.PartID)
+
 	job, err := db.GetJob(jobId)
 	if err != nil {
 		log.Println(err)
@@ -118,19 +82,106 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 	return nil, fmt.Errorf("Could not find work in job %i", work.PartID)
 }
 
+func (db *DB) tryGetJob() (*Hyades.Work, int, error, bool) {
+
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
+	if err != nil {
+		return nil, 0, err, false
+	}
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Println("Error closing conn")
+		} else {
+			log.Println("Closed db conn")
+		}
+	}()
+	tx, err := conn.Begin()
+	if err != nil {
+		return nil, -1, err, false
+	}
+	defer tx.Rollback()
+
+	var jobId int
+
+	res, err := tx.Query("Select OwnerID,Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where ((BeingHandled = ? ) and (Dispatched = ? ) and (Done = ? )) limit 1; ", false, false, false)
+	if err != nil {
+		log.Println("Could not select a job", err)
+		return nil, -1, err, false
+	}
+	defer closeQuery(res)
+	work := new(Hyades.Work)
+
+	if res.Next() {
+		err := res.Scan(&jobId,
+			&work.PartID,
+			&work.DispatchTime,
+			&work.FinishTime,
+			&work.TotalTimeDispatched,
+			&work.Done,
+			&work.Dispatched,
+			&work.BeingHandled,
+			&work.FailCount,
+			&work.Error,
+			&work.Status,
+			&work.Command)
+		if err != nil {
+			log.Println("Could not scan a job", err)
+			return nil, -1, err, false
+		}
+
+		if work.BeingHandled {
+			log.Println("Work is already being handled")
+		}
+	} else {
+
+		return nil, -1, nil, false
+	}
+
+	ures, err := tx.Exec("UPDATE JOBPARTS  set BeingHandled = ? where Id = ?; ", true, work.PartID)
+	if err != nil {
+		log.Println("Could not update a job", err)
+		return nil, -1, err, false
+	}
+
+	i, _ := ures.RowsAffected()
+	if i != 1 {
+		log.Println("Updating did not affect one row", i)
+	}
+	err = tx.Commit()
+	if err != nil {
+		log.Println("Could not commit job chekout", err)
+		return nil, 0, err, false
+	}
+	return work, jobId, nil, true
+
+}
+
 func (db *DB) GetCurrentClientID(c *Hyades.ClientInfo) (int, error) {
+	log.Println("GetCurrentClientID started")
+	defer log.Println("GetCurrentClientID done")
+
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+
 	if c == nil {
 		return 0, nil
 	}
-	res, err := db.conn.Query("Select Id from CurrentClient where OperatingSystem = ? and ComputerName = ? ; ", c.OperatingSystem, c.ComputerName)
+	res, err := conn.Query("Select Id from CurrentClient where OperatingSystem = ? and ComputerName = ? ; ", c.OperatingSystem, c.ComputerName)
 	if err != nil {
 		return 0, err
 	}
 	var id int64
+	defer closeQuery(res)
 	if res.Next() {
 		res.Scan(&id)
+		res.Close()
 	} else {
-		res, err := db.conn.Exec("Insert into CurrentClient (OperatingSystem,ComputerName) values(? , ?);", c.OperatingSystem, c.ComputerName)
+		res.Close()
+		res, err := conn.Exec("Insert into CurrentClient (OperatingSystem,ComputerName) values(? , ?);", c.OperatingSystem, c.ComputerName)
 		if err != nil {
 			return 0, err
 		}
@@ -144,11 +195,12 @@ func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	res, err := conn.Query("Select * from JOBS where ID = ?", id)
 	if err != nil {
 		return nil, err
 	}
-	defer res.Close()
+	defer closeQuery(res)
 	job = new(Hyades.Job)
 	if res.Next() {
 		res.Scan(&job.Id, &job.OwnerID, &job.Name, &job.JobFolder, &job.Env, &job.ReturnEnv)
@@ -159,6 +211,7 @@ func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
 		log.Println(err)
 
 	}
+	defer closeQuery(partres)
 	for partres.Next() {
 		var part *Hyades.Work = Hyades.NewWork(job)
 
@@ -167,6 +220,7 @@ func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
 			log.Println("partres.Scan", err)
 		}
 		paramres, err := conn.Query("Select Parameters from Parameters where JOBPARTSID = ?", part.PartID)
+		defer closeQuery(paramres)
 		for paramres.Next() {
 			var param string
 			err := paramres.Scan(&param)
@@ -186,11 +240,29 @@ func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
 
 func (db *DB) SaveWork(work *Hyades.Work) error {
 
+	db.Lock()
+	defer db.Unlock()
+
+	log.Println("SaveWork started")
+	defer log.Println("SaveWork done")
+
 	CurrentClient, err := db.GetCurrentClientID(work.CurrentClient)
 	if err != nil {
+		log.Println("db *DB) SaveWork db.GetCurrentClientID error", err)
 		return err
 	}
-	_, err = db.conn.Exec("UPDATE JOBPARTS set DispatchTime= ?, FinishTime = ?,	TotalTimeDispatched = ?,  CurrentClient = ?,	Done = ?,	Dispatched  = ?, BeingHandled  = ?,	FailCount = ?,	Error = ?,	Status = ?, Command = ? WHERE Id= ?;",
+
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
+
+	defer conn.Close()
+	if err != nil {
+		log.Println("db *DB) SaveWork sql.Open error", err)
+		return err
+	}
+
+	tx, err := conn.Begin()
+	defer tx.Commit()
+	_, err = tx.Exec("UPDATE JOBPARTS set DispatchTime= ?, FinishTime = ?, TotalTimeDispatched = ?,  CurrentClient = ?, Done = ?, Dispatched  = ?, BeingHandled  = ?, FailCount = ?, Error = ?, Status = ?, Command = ? WHERE Id= ?;",
 		work.DispatchTime,
 		work.FinishTime,
 		work.TotalTimeDispatched,
@@ -203,6 +275,11 @@ func (db *DB) SaveWork(work *Hyades.Work) error {
 		work.Status,
 		work.Command,
 		work.PartID)
+
+	if err != nil {
+		log.Println("db *DB) SaveWork tx.Exec error", err)
+	}
+
 	return err
 }
 
@@ -236,12 +313,15 @@ func (db *DB) initDB() error {
 		return err
 	}
 
-	_, err = conn.Query("UPDATE JOBPARTS  set BeingHandled = ?; ", false)
+	_, err = conn.Exec("UPDATE JOBPARTS  set BeingHandled = ? ; ", false)
 	if err != nil {
 		return err
 	}
 	return nil
 
+}
+func closeQuery(conn *sql.Rows) {
+	conn.Close()
 }
 
 /*

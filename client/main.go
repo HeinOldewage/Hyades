@@ -152,14 +152,14 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 	fullpath, _ := filepath.Abs(TempJobFolder)
 	fullpath = "\"" + fullpath + "\""
 
-	log.Println("Running command", cmd)
+	log.Println("Running command", work.Parts.Command)
+
 	cmd.Dir = TempJobFolder
 	cmd.Stdout = stdBuf
 	cmd.Stderr = errBuf
 	err = cmd.Run()
-	log.Println("Std", string(stdBuf.Bytes()), len(stdBuf.Bytes()))
-	log.Println("Err", string(errBuf.Bytes()), len(errBuf.Bytes()))
-
+	log.Println("Std", len(stdBuf.Bytes()))
+	log.Println("Err", len(errBuf.Bytes()))
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 
@@ -170,7 +170,7 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 		return
 	}
 	cmd.StdoutPipe()
-	log.Println("Done command", cmd)
+	log.Println("Done command", work.Parts.Command)
 
 	//Delete any exes in the folder; they don't need to be sent back to the server
 

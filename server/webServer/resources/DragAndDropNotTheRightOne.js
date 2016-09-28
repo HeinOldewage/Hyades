@@ -75,6 +75,10 @@ if(window.FileReader) {
 		}
 }
 function DragUpload(elemID,url,successFunc) {
+	
+	var bar = $('.bar');
+    var percent = $('.percent');
+
 	DragSave(elemID,function(file) {
 		var formData = new FormData({EmailFile:file});
 		formData.append('File',file,file.name);
@@ -89,7 +93,13 @@ function DragUpload(elemID,url,successFunc) {
 			success: successFunc,
 			error: function(){
 				alert("error in ajax form submission");
-			}
+			},
+			uploadProgress: function(event, position, total, percentComplete) {
+					alert("Boo")
+			            var percentVal = percentComplete + '%';
+			            bar.width(percentVal);
+			            percent.html(percentVal);
+			        }
 		});
 	})
 }

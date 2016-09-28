@@ -37,11 +37,12 @@ func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	res, err := conn.Query("Select * from JOBS where ID = ?", id)
 	if err != nil {
 		return nil, err
 	}
-	defer res.Close()
+	defer closeQuery(res)
 	job = new(Hyades.Job)
 	if res.Next() {
 		res.Scan(&job.Id, &job.OwnerID, &job.Name, &job.JobFolder, &job.Env, &job.ReturnEnv)
@@ -53,6 +54,7 @@ func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
 	if err != nil {
 		log.Println(err)
 	}
+	defer closeQuery(partres)
 	for partres.Next() {
 		var part *Hyades.Work = Hyades.NewWork(job)
 
@@ -64,6 +66,7 @@ func (jm *JobMap) GetJob(id string) (job *Hyades.Job, err error) {
 		log.Println("PartId", part.PartID)
 
 		paramres, err := conn.Query("Select Parameters from Parameters where JOBPARTSID = ?", part.PartID)
+		defer closeQuery(paramres)
 		for paramres.Next() {
 			var param string
 			err := paramres.Scan(&param)
@@ -89,11 +92,12 @@ func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
 		return nil, err
 	}
 	defer conn.Close()
+	log.Println("Getting job for user", user.Username, user.Id)
 	res, err := conn.Query("Select * from JOBS where OwnerID = ?", user.Id)
 	if err != nil {
 		return nil, err
 	}
-	defer res.Close()
+	defer closeQuery(res)
 
 	for res.Next() {
 		job := &Hyades.Job{}
@@ -101,10 +105,12 @@ func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
 		if err != nil {
 			log.Println(err)
 		}
+		log.Println("Job", job.Id, "Belongs to id", job.OwnerID)
 		partres, err := conn.Query("Select Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where OwnerID = ?", job.Id)
 		if err != nil {
 			log.Println(err)
 		}
+		defer closeQuery(partres)
 		for partres.Next() {
 			var part Hyades.Work
 
@@ -114,6 +120,7 @@ func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
 			}
 
 			paramres, err := conn.Query("Select Parameters from Parameters where JOBPARTSID = ?", part.PartID)
+			defer closeQuery(paramres)
 			for paramres.Next() {
 				var param string
 				err := paramres.Scan(&param)
@@ -124,7 +131,6 @@ func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
 			}
 
 		}
-
 		if partres.Err() != nil {
 			log.Println(partres.Err())
 		}
@@ -135,11 +141,16 @@ func (jm *JobMap) GetAll(user *Hyades.Person) (jobs []*Hyades.Job, err error) {
 	return jobs, res.Err()
 }
 
+func closeQuery(conn *sql.Rows) {
+	conn.Close()
+}
+
 func (jm *JobMap) AddJob(job *Hyades.Job) error {
 	conn, err := sql.Open("sqlite3", "file:"+jm.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 	trans, err := conn.Begin()
 	if err != nil {
 		return err
@@ -194,6 +205,7 @@ func (jm *JobMap) Delete(job *Hyades.Job, datapath string) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 	trans, err := conn.Begin()
 	if err != nil {
 		return err
