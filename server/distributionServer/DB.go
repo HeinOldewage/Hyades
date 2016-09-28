@@ -319,6 +319,12 @@ func (db *DB) initDB() error {
 		return err
 	}
 
+	_, err = conn.Exec("Create INDEX if not exists OwnerIDIndex On  JOBPARTS (OwnerID);")
+
+	if err != nil {
+		return err
+	}
+
 	_, err = conn.Exec("Create table if not exists Parameters  (Id INTEGER PRIMARY KEY AUTOINCREMENT,JOBPARTSID INTEGER, Parameters varchar(500));")
 
 	if err != nil {
