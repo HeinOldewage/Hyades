@@ -41,6 +41,7 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 	db.Lock()
 	defer db.Unlock()
 	log.Println("(db *DB) GetNextJob() start")
+	defer log.Println("(db *DB) GetNextJob() ends")
 	//transaction this
 	var sleepCounter int = 0
 	var jobId int
@@ -65,21 +66,8 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 	}
 	log.Println("Got a jobpart with id", work.PartID)
 
-	job, err := db.GetJob(jobId)
-	if err != nil {
-		log.Println(err)
-	}
+	return db.GetPart(jobId, work.PartID)
 
-	for _, part := range job.Parts {
-		if part.PartID == work.PartID {
-			if part.BeingHandled {
-				log.Println("Part is being handles after loading")
-			}
-			return part, nil
-		}
-	}
-
-	return nil, fmt.Errorf("Could not find work in job %i", work.PartID)
 }
 
 func (db *DB) tryGetJob() (*Hyades.Work, int, error, bool) {
@@ -207,6 +195,55 @@ func (db *DB) GetJob(id int) (job *Hyades.Job, err error) {
 	}
 
 	partres, err := conn.Query("Select Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where OwnerID = ?", job.Id)
+	if err != nil {
+		log.Println(err)
+
+	}
+	defer closeQuery(partres)
+	for partres.Next() {
+		var part *Hyades.Work = Hyades.NewWork(job)
+
+		err := partres.Scan(&part.PartID, &part.DispatchTime, &part.FinishTime, &part.TotalTimeDispatched, &part.Done, &part.Dispatched, &part.BeingHandled, &part.FailCount, &part.Error, &part.Status, &part.Command)
+		if err != nil {
+			log.Println("partres.Scan", err)
+		}
+		paramres, err := conn.Query("Select Parameters from Parameters where JOBPARTSID = ?", part.PartID)
+		defer closeQuery(paramres)
+		for paramres.Next() {
+			var param string
+			err := paramres.Scan(&param)
+			if err != nil {
+				log.Println("paramres.Scan", err)
+			}
+			part.Parameters = append(part.Parameters, param)
+		}
+	}
+
+	if partres.Err() != nil {
+		log.Println(partres.Err())
+	}
+
+	return job, err
+}
+
+func (db *DB) GetPart(jobid, partid int) (jobpart *Hyades.Work, err error) {
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	res, err := conn.Query("Select * from JOBS where ID = ?", jobid)
+	if err != nil {
+		return nil, err
+	}
+	defer closeQuery(res)
+	job = new(Hyades.Job)
+	if res.Next() {
+		res.Scan(&job.Id, &job.OwnerID, &job.Name, &job.JobFolder, &job.Env, &job.ReturnEnv)
+	}
+
+	partres, err := conn.Query("Select Id,DispatchTime,FinishTime,TotalTimeDispatched,Done,Dispatched,BeingHandled,FailCount,Error,Status,Command from JOBPARTS where Id = ?", partid)
 	if err != nil {
 		log.Println(err)
 
