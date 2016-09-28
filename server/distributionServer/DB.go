@@ -301,6 +301,24 @@ func (db *DB) initDB() error {
 		return err
 	}
 
+	_, err = conn.Exec("Create INDEX if not exists DoneIndex On  JOBPARTS (Done);")
+
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Exec("Create INDEX if not exists BeingHandledIndex On  JOBPARTS (BeingHandled);")
+
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Exec("Create INDEX if not exists DispatchedIndex On  JOBPARTS (Dispatched);")
+
+	if err != nil {
+		return err
+	}
+
 	_, err = conn.Exec("Create table if not exists Parameters  (Id INTEGER PRIMARY KEY AUTOINCREMENT,JOBPARTSID INTEGER, Parameters varchar(500));")
 
 	if err != nil {
