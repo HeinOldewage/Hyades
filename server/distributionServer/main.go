@@ -7,6 +7,9 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
+
 	"os"
 	"path/filepath"
 	"strconv"
@@ -58,6 +61,7 @@ func main() {
 
 	ws := NewWorkServer(":8080", db, *configuration.DataPath)
 
+	go http.ListenAndServe(":8888", nil)
 	ws.Listen()
 }
 
