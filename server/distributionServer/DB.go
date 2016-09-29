@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -66,7 +65,7 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 	}
 	log.Println("Got a jobpart with id", work.PartID)
 
-	return db.GetPart(jobId, work.PartID)
+	return db.GetPart(jobId, int(work.PartID))
 
 }
 
