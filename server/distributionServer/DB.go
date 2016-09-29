@@ -238,7 +238,7 @@ func (db *DB) GetPart(jobid, partid int) (jobpart *Hyades.Work, err error) {
 		return nil, err
 	}
 	defer closeQuery(res)
-	job = new(Hyades.Job)
+	job := new(Hyades.Job)
 	if res.Next() {
 		res.Scan(&job.Id, &job.OwnerID, &job.Name, &job.JobFolder, &job.Env, &job.ReturnEnv)
 	}
@@ -272,7 +272,7 @@ func (db *DB) GetPart(jobid, partid int) (jobpart *Hyades.Work, err error) {
 		log.Println(partres.Err())
 	}
 
-	return job, err
+	return job.Parts[0], err
 }
 
 func (db *DB) SaveWork(work *Hyades.Work) error {
