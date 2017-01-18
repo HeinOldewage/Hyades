@@ -41,7 +41,7 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 	log.Println("(db *DB) GetNextJob() start")
 	defer log.Println("(db *DB) GetNextJob() ends")
 	//transaction this
-	var sleepCounter int = 0
+	var sleepCounter int = 1
 	var jobId int
 	for {
 		var err error
@@ -52,7 +52,9 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 		log.Println("tryGetJob returned")
 		if err != nil {
 			log.Println("(db *DB) GetNextJob()", err)
-		} else if ok {
+		}
+
+		if ok {
 			break
 		} else {
 			if sleepCounter < 60 {
