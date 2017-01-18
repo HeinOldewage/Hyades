@@ -37,8 +37,7 @@ func NewDB(DBFile string) (*DB, error) {
 }
 
 func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
-	db.Lock()
-	defer db.Unlock()
+
 	log.Println("(db *DB) GetNextJob() start")
 	defer log.Println("(db *DB) GetNextJob() ends")
 	//transaction this
@@ -70,6 +69,8 @@ func (db *DB) GetNextJob() (work *Hyades.Work, err error) {
 }
 
 func (db *DB) tryGetJob() (*Hyades.Work, int, error, bool) {
+	db.Lock()
+	defer db.Unlock()
 
 	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
 	if err != nil {
