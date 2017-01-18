@@ -72,7 +72,7 @@ func (db *DB) tryGetJob() (*Hyades.Work, int, error, bool) {
 	db.Lock()
 	defer db.Unlock()
 
-	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=60000")
+	conn, err := sql.Open("sqlite3", "file:"+db.dbFile+"?_loc=auto&_busy_timeout=600")
 	if err != nil {
 		return nil, 0, err, false
 	}
@@ -270,6 +270,7 @@ func (db *DB) GetPart(jobid, partid int) (jobpart *Hyades.Work, err error) {
 
 	if partres.Err() != nil {
 		log.Println(partres.Err())
+		return nil, partres.Err()
 	}
 
 	return job.Parts[0], err
