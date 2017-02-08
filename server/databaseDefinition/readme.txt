@@ -1,0 +1,1 @@
+protoc -I databaseDefinition\ databaseDefinition\databaseDefinition.proto --go_out=plugins=grpc:databaseDefinition

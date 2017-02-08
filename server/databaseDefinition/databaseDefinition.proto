@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+package databaseDefinition;
+
+service DataBase {
+	rpc GetNextJob(google.protobuf.Empty) returns (JobWork);
+	rpc GetJob(ID)	returns(Job);
+	rpc AddJob(Job)returns (ID); 
+	rpc DeleteJob(ID) returns (google.protobuf.Empty);
+	rpc GetAll(ID) returns (stream Job);
+	rpc JobDone(ID) returns (google.protobuf.Empty);
+	
+	
+	rpc GetWorks(ID)	returns(stream Work);
+	rpc AddWorks(stream Work) returns (google.protobuf.Empty);
+	
+	rpc SaveWork(Work) returns (google.protobuf.Empty)	;
+	rpc GetPart(JobWorkIdent)	returns(Work);
+}
+message Job {
+  	int64  OwnerID = 1     ;
+	int64 Id  = 2     ;
+	// repeated  Work  Parts  =3   ; Parts can get large, so we stram them seperatly
+	int64 NumParts = 3;
+	int64 NumPartsDone = 4;
+	string JobFolder = 5;
+	string Name = 6;
+
+	string Env   = 7   ; 
+	bool ReturnEnv   =8;
+	bool Done =  9 ;
+}
+
+message Work {
+	int64 PartID  = 1;
+	int64 PartOfID  = 2;
+
+	int64  DispatchTime  =3 ;      
+	int64 FinishTime    =4   ;   
+	int64 TotalTimeDispatched =5;
+
+	ClientInfo CompletedBy   =6;
+	ClientInfo CurrentClient =7;
+	bool Done          = 8;
+	bool Dispatched     = 9;
+	int64 FailCount      = 11;
+	string Error          = 12;
+	string Status        =13;
+
+	string Command    = 14;
+	repeated  string Parameters = 15;
+}
+
+message ClientInfo {
+	string OperatingSystem = 1;
+	string ComputerName     = 2;
+}
+message JobWorkIdent {
+	int64 JobID = 1 ;
+	int64 WorkID =2  ;
+}
+message ID {
+	int64 ID = 1 ; 
+}
+
+message JobWork {
+	Job j = 1 ;
+	Work w = 2;
+}
+
+message Env {
+	int64 JobId = 2;
+	bytes data = 1 ;
+}
+
