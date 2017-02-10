@@ -7,21 +7,6 @@
 			var envRegex =/\.zip/i ;
 			var descrRegex =/\.json/i ;
 			
-			DragSave("ALLTHETHINGS",function (file,outof) {
-										if (outof >= 2) {
-											if (envRegex.test(file.name)){
-												drop   = document.getElementById("X1");
-												drop.innerHTML = file.name; 
-												Envr = file	;
-											}
-											if (descrRegex.test(file.name)){
-												drop   = document.getElementById("X2");
-												drop.innerHTML = file.name; 
-												descr = file	;
-											}
-										}
-									});
-			
 			DragSave("X1",function (result) {
 										drop   = document.getElementById("X1");
 										drop.innerHTML = result.name; 
@@ -31,7 +16,7 @@
 			DragSave("X2",function (result) {
 										drop   = document.getElementById("X2");
 										drop.innerHTML = result.name; 
-										win = result;	
+										descr = result;	
 									},
 									"1px solid red");
 									
