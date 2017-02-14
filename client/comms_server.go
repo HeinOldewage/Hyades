@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"time"
 
-	"bitbucket.org/Neoin/logicsocket"
+	"github.com/HeinOldewage/logicsocket"
 	"github.com/HeinOldewage/Hyades"
 )
 
