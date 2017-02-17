@@ -16,9 +16,12 @@ import (
  All work is linked to a Job
 */
 type Job struct {
-	OwnerID int     `bson :"omitempty"`
-	Id      int     `json:"id" bson:"_id,omitempty"`
+	OwnerID int64   `bson :"omitempty"`
+	Id      int64   `json:"id" bson:"_id,omitempty"`
 	Parts   []*Work `bson :"omitempty"`
+
+	NumParts     int64
+	NumPartsDone int64
 
 	JobFolder string
 	//A friendly name to used in displays
@@ -27,30 +30,17 @@ type Job struct {
 	//Path to env file
 	Env       string `bson :"omitempty"`
 	ReturnEnv bool   `bson :"omitempty"`
-
-	WorkObservers *ObserverList `bson :"omitempty"`
-}
-
-func (j *Job) NumPartsDone() int32 {
-	res := 0
-	for _, part := range j.Parts {
-		if part.Done {
-			res++
-		}
-	}
-	return int32(res)
 }
 
 func (j *Job) AddWork(w *Work) {
 	j.Parts = append(j.Parts, w)
 }
 
-func NewJob(OwnerID int, JobID string, Parts []*Work, Env string) *Job {
+func NewJob(OwnerID int64, JobID string, Parts []*Work, Env string) *Job {
 	res := &Job{
-		OwnerID:       OwnerID,
-		Parts:         Parts,
-		Env:           Env,
-		WorkObservers: NewObserverList(),
+		OwnerID: OwnerID,
+		Parts:   Parts,
+		Env:     Env,
 	}
 	return res
 }
@@ -60,7 +50,7 @@ A Work struct gives the Environment the Command must be executed and specifies w
 */
 type Work struct {
 	partOf *Job
-	PartID int32 `json:"id" bson:"_id,omitempty"`
+	PartID int64 `json:"id" bson:"_id,omitempty"`
 
 	DispatchTime        time.Time
 	FinishTime          time.Time
@@ -183,10 +173,6 @@ func (w *Work) MarshalJSON() ([]byte, error) {
 
 func (w *Work) Save() error {
 	return nil
-}
-
-func (j *Job) callback(e interface{}) {
-	j.WorkObservers.Callback(e)
 }
 
 func (j *Job) MarshalBinary() (data []byte, err error) {

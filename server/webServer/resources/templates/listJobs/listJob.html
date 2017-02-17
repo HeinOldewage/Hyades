@@ -3,7 +3,7 @@
 	<br>
 	<a href="JobStatus?id={{IDToString .Id}}">{{.Name}} </a>
 
-	<span>({{ CountDone  .Id}} of {{totalWork  .Id}} complete)<button onclick="deleteJob({{.Id}})">Delete</button></span>
+	<span>({{.NumPartsDone}} of {{.NumParts}} complete)<button onclick="deleteJob({{.Id}})">Delete</button></span>
 	</p>
 	</li>
 

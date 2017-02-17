@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"time"
 
-	"bitbucket.org/Neoin/logicsocket"
 	"github.com/HeinOldewage/Hyades"
+	"github.com/HeinOldewage/logicsocket"
 )
 
 type Server struct {
@@ -95,11 +95,13 @@ func ServiceWork(wr io.ReadWriter) {
 
 		res := <-workResults
 		log.Printf("DoWork done %T  \n", res)
+
 		err = writer.Encode(res)
 		if err != nil {
 			log.Println("ServiceWork Encode", err)
 			return
 		}
+
 		if env := res.GetEnv(); env != nil {
 
 			_, err = io.CopyN(wr, env, int64(res.EnvLength))

@@ -14,7 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
+	//	"strings"
 
 	"github.com/HeinOldewage/Hyades"
 	//"sync/atomic"
@@ -112,21 +112,31 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 
 	if err != nil {
 		log.Println("Error zip.NewReader:", err)
-		res.Error = err.Error()
+		res.Error = "Error zip.NewReader:" + err.Error()
 		return
 	}
 
 	for _, file := range unzipper.File {
 		os.MkdirAll(filepath.Join(TempJobFolder, path.Dir(file.Name)), os.ModeDir|os.ModePerm)
 
-		outfile, _ := os.Create(filepath.Join(TempJobFolder, file.Name))
+		outfile, err := os.Create(filepath.Join(TempJobFolder, file.Name))
+		if err != nil {
+			log.Println("Error creating file from zip", err)
+			res.Error = "Error creating file from zip" + err.Error()
+			return
+		}
 		zf, err := file.Open()
 		if err != nil {
 			log.Println("Error reading zip:", err)
-			res.Error = err.Error()
+			res.Error = "Error reading zip:" + err.Error()
 			return
 		}
-		io.Copy(outfile, zf)
+		_, err = io.Copy(outfile, zf)
+		if err != nil {
+			log.Println("Error writing zip contents to file", err)
+			res.Error = "Error writing zip contents to file" + err.Error()
+			return
+		}
 		outfile.Close()
 		zf.Close()
 	}
@@ -146,7 +156,7 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 		cmd = exec.Command(work.Parts.Command, work.Parts.Parameters...)
 	} else {
 		log.Println("Setting up the windows ccommand")
-		cmd = exec.Command("cmd", "/C", "cd "+TempJobFolder, " & "+work.Parts.Command+" "+strings.Join(work.Parts.Parameters, " "))
+		cmd = exec.Command(work.Parts.Command, work.Parts.Parameters...)
 	}
 
 	fullpath, _ := filepath.Abs(TempJobFolder)
@@ -166,8 +176,6 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 			log.Println("Error running command:", err)
 			res.Error = "Error running command:" + err.Error()
 		}
-
-		return
 	}
 	cmd.StdoutPipe()
 	log.Println("Done command", work.Parts.Command)
@@ -194,6 +202,7 @@ func DoWork(work *Hyades.WorkComms, resChan chan *Hyades.WorkResult) {
 			}
 		}
 	}
+
 	var tempWriter io.ReadWriteCloser
 	var Bufferlength func() int
 	tempFile, err := os.Create("temp.zip")

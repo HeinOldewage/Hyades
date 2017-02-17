@@ -26,6 +26,8 @@ import (
 	"github.com/boltdb/bolt"
 	"github.com/yosssi/boltstore/reaper"
 	"github.com/yosssi/boltstore/store"
+
+	"github.com/HeinOldewage/Hyades/server/databaseDefinition"
 )
 
 type ConfigFile struct {
@@ -39,7 +41,7 @@ var configFilePath *string = flag.String("config", "config.json", "If the config
 var configuration ConfigFile = ConfigFile{
 	DataPath:      flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
 	ServerAddress: flag.String("address", ":8088", "The folder that the distribution server saves the data"),
-	DB:            flag.String("DBFile", "../jobs.db", "Sqlite db file"),
+	DB:            flag.String("DBserver", "127.0.0.1:8085", "Sqlite db file"),
 }
 
 func main() {
@@ -81,11 +83,11 @@ type SubmitServer struct {
 	boltDB *bolt.DB
 }
 
-func NewSubmitServer(Address string, dbFile string) *SubmitServer {
+func NewSubmitServer(Address string, server string) *SubmitServer {
 
 	//Delete all previous Jobs, After Users are saved/loaded from file only delete if that fails
 
-	userMap := NewUserMap(dbFile)
+	userMap := NewUserMap("users.db")
 
 	defer log.Println("NewSubmitServer Done")
 
@@ -94,10 +96,14 @@ func NewSubmitServer(Address string, dbFile string) *SubmitServer {
 	if err != nil {
 		panic(err)
 	}
+	jm, err := NewJobMap(server)
+	if err != nil {
+		panic(err)
+	}
 	return &SubmitServer{Address,
 		nil,
 		sessions.NewCookieStore([]byte("ForTheUnity")),
-		NewJobMap(dbFile),
+		jm,
 		userMap,
 		db,
 	}
@@ -146,7 +152,7 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 
 		descrReader := bufio.NewReader(descr)
 
-		job := ss.Jobs().NewJob(user)
+		job := &Hyades.Job{OwnerID: user.Id}
 
 		decodeError := json.NewDecoder(descrReader).Decode(job)
 		log.Println("Creating job for user with id", user.Id, " And name", user.Username)
@@ -179,7 +185,16 @@ func (ss *SubmitServer) submitJob(user *Hyades.Person, w http.ResponseWriter, re
 		job.Env = filename
 
 		log.Println("About to call ss.Jobs().AddJob(job)")
-		err = ss.Jobs().AddJob(job)
+		dbJob := &databaseDefinition.Job{}
+		databaseDefinition.LoadInto(dbJob, job)
+		dbParts := make([]*databaseDefinition.Work, len(job.Parts))
+		for k := 0; k < len(dbParts); k++ {
+			dbParts[k] = &databaseDefinition.Work{}
+			databaseDefinition.LoadInto(dbParts[k], job.Parts[k])
+			dbParts[k].PartOfID = dbJob.GetId()
+		}
+		//dbJob.NumParts = int64(len(dbParts))
+		err = ss.Jobs().AddJob(dbJob, dbParts)
 		if err != nil {
 			log.Println("ss.Jobs().AddJob(job):", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -410,27 +425,41 @@ func (ss *SubmitServer) createJob(user *Hyades.Person, w http.ResponseWriter, re
 func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req *http.Request) {
 	var fm template.FuncMap = make(template.FuncMap)
 
-	fm["IDToString"] = func(id int) string {
-		return strconv.Itoa(id)
+	jobs, err := ss.jobs.GetAllWithoutWork(user)
+
+	fm["IDToString"] = func(id int64) string {
+		return fmt.Sprint(id)
 	}
 
-	fm["CountDone"] = func(id int) string {
+	fm["CountDone"] = func(id int64) string {
 
-		job, err := ss.jobs.GetJob(fmt.Sprint(id))
+		/*job, err := ss.jobs.GetJob(id)
 		if err != nil {
 			log.Println("listJobs_CountDone", err, id)
 			return ""
-		}
-		return fmt.Sprint(job.NumPartsDone())
-	}
-	fm["totalWork"] = func(id int) string {
+		}*/
+		for j := range jobs {
+			if jobs[j].Id == id {
+				return fmt.Sprint(jobs[j].NumParts)
+			}
 
-		job, err := ss.jobs.GetJob(fmt.Sprint(id))
+		}
+		return fmt.Sprint(0) //NumPartsDone(job)
+	}
+	fm["totalWork"] = func(id int64) string {
+
+		/*job, err := ss.jobs.GetJob(id)
 		if err != nil {
 			log.Println("listJobs_totalWork", err, id)
 			return ""
+		}*/
+		for j := range jobs {
+			if jobs[j].Id == id {
+				return fmt.Sprint(jobs[j].NumPartsDone)
+			}
+
 		}
-		return fmt.Sprint(len(job.Parts))
+		return fmt.Sprint(0) //len(job.Parts)
 	}
 
 	fm["currentTab"] = func() string {
@@ -444,8 +473,6 @@ func (ss *SubmitServer) listJobs(user *Hyades.Person, w http.ResponseWriter, req
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	jobs, err := ss.jobs.GetAll(user)
 
 	if err != nil {
 		log.Println("ss.jobs.GetAll(user)", err)
@@ -472,19 +499,19 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 	}
 
 	var fm template.FuncMap = make(template.FuncMap)
-	fm["IDToString"] = func(id int) string {
+	fm["IDToString"] = func(id int64) string {
 
 		return fmt.Sprint(id)
 	}
 
-	fm["CountDone"] = func(id int) string {
+	fm["CountDone"] = func(id int64) string {
 
-		job, err := ss.jobs.GetJob(fmt.Sprint(id))
+		job, err := ss.jobs.GetJob(id)
 		if err != nil {
 			log.Println("listJobs_CountDone", err, id)
 			return ""
 		}
-		return fmt.Sprint(job.NumPartsDone())
+		return fmt.Sprint(NumPartsDone(job))
 	}
 	fm["currentTab"] = func() string {
 		return ""
@@ -498,7 +525,8 @@ func (ss *SubmitServer) jobStatus(user *Hyades.Person, w http.ResponseWriter, re
 		return
 	}
 
-	job, err := ss.jobs.GetJob(string(id[0]))
+	jid, _ := strconv.ParseInt(id[0], 10, 64)
+	job, err := ss.jobs.GetJob(jid)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -522,7 +550,8 @@ func (ss *SubmitServer) deleteJob(user *Hyades.Person, w http.ResponseWriter, re
 		http.Error(w, "Job id not provided", http.StatusNotFound)
 		return
 	}
-	job, err := ss.jobs.GetJob(id[0])
+	jid, _ := strconv.ParseInt(id[0], 10, 64)
+	job, err := ss.jobs.GetJob(jid)
 	if err != nil {
 		log.Println("id[0]", id[0])
 		log.Println("getJobResult - ss.jobs.GetJob", err)
@@ -530,10 +559,10 @@ func (ss *SubmitServer) deleteJob(user *Hyades.Person, w http.ResponseWriter, re
 		return
 	}
 
-	err = ss.Jobs().Delete(job, *configuration.DataPath)
+	err = ss.Jobs().Delete(job)
 	if err != nil {
-		log.Println("id[0]", id[0])
-		log.Println("getJobResult - ss.jobs.GetJob", err)
+		log.Println("id[0]", id[0], "job.Id", job.Id)
+		log.Println("getJobResult - ss.Jobs().Delete", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -546,8 +575,8 @@ func (ss *SubmitServer) getJobResult(user *Hyades.Person, w http.ResponseWriter,
 		http.Error(w, "Job id not provided", http.StatusNotFound)
 		return
 	}
-
-	job, err := ss.jobs.GetJob(id[0])
+	jid, _ := strconv.ParseInt(id[0], 10, 64)
+	job, err := ss.jobs.GetJob(jid)
 	if err != nil {
 		log.Println("id[0]", id[0])
 		log.Println("getJobResult - ss.jobs.GetJob", err)
@@ -792,4 +821,14 @@ func javascriptredirect(w io.Writer, path string) {
 	if err != nil {
 		log.Println("javascriptredirect", err)
 	}
+}
+
+func NumPartsDone(j *Hyades.Job) int {
+	count := 0
+	for w := range j.Parts {
+		if j.Parts[w].Done {
+			count++
+		}
+	}
+	return count
 }

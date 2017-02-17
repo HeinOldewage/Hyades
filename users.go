@@ -1,7 +1,7 @@
 package Hyades
 
 type Person struct {
-	Id       int
+	Id       int64
 	Username string
 	//hash
 	Password  []byte
