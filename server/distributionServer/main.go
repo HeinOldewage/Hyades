@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/HeinOldewage/Hyades"
+	"github.com/HeinOldewage/Hyades/server/databaseDefinition"
 )
 
 type ConfigFile struct {
@@ -29,7 +30,7 @@ var configFilePath *string = flag.String("config", "config.json", "If the config
 
 var configuration ConfigFile = ConfigFile{
 	DataPath: flag.String("dataFolder", "userData", "The folder that the distribution server saves the data"),
-	DB:       flag.String("DBFile", "../jobs.db", "Sqlite db file"),
+	DB:       flag.String("DBFile", "127.0.0.1:8085", "Sqlite db file"),
 }
 
 func main() {
@@ -66,7 +67,7 @@ func main() {
 }
 
 type clientStats struct {
-	Info        *Hyades.ClientInfo
+	Info        *databaseDefinition.ClientInfo
 	ConnectedAt time.Time
 	PartsDone   int32
 }
@@ -142,33 +143,38 @@ func (ws *WorkServer) GetWorkAvailable() int {
 	return 0
 }
 
-func (ws *WorkServer) getWork() (*Hyades.Work, error) {
+func (ws *WorkServer) getWork() (*databaseDefinition.Job, *databaseDefinition.Work, error) {
 	return ws.db.GetNextJob()
 }
 
-func (ws *WorkServer) retryWork(work *Hyades.Work, err string) {
-	work.Failed()
-	work.SetStatus("In Queue after error " + err)
+func (ws *WorkServer) retryWork(work *databaseDefinition.Work, err string) {
+	work.FailCount++
+	work.Status = "In Queue after error " + err
+	ws.db.SaveWork(work)
 }
 
-func (ws *WorkServer) doneWork(work *Hyades.Work, res *Hyades.WorkResult) error {
-	err := work.Succeeded()
-	if err != nil {
-		return err
-	}
-	work.SetStatus("Saving work")
-	err = ws.SaveResult(work, res)
+func (ws *WorkServer) doneWork(job *databaseDefinition.Job, work *databaseDefinition.Work, res *Hyades.WorkResult) error {
+	work.FinishTime = time.Now().Unix()
+	work.TotalTimeDispatched = work.TotalTimeDispatched + int64((time.Now().Sub(time.Unix(work.DispatchTime, 0))))
+	work.Done = true
+	work.Dispatched = false
+	work.CompletedBy = work.CurrentClient
+	work.CurrentClient = nil
+
+	work.Status = "Saving work"
+	ws.db.SaveWork(work)
+	err := ws.SaveResult(job, work, res)
 	if err != nil {
 		return err
 	}
 
-	work.SetStatus("Work done")
-
+	work.Status = "Work done"
+	ws.db.SaveWork(work)
 	//work.PartOf().Save(ws.db.session)
 	return nil
 }
 
-func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) error {
+func (ws *WorkServer) SaveResult(j *databaseDefinition.Job, w *databaseDefinition.Work, res *Hyades.WorkResult) error {
 	//Get Job work was part of, Get person Job belonged to and then save under
 	//Person.JobFolder\Job.JobID\Work.partID\
 
@@ -177,7 +183,7 @@ func (ws *WorkServer) SaveResult(w *Hyades.Work, res *Hyades.WorkResult) error {
 	//StdOut.txt
 	//ErrOut.txtlogFile
 
-	folder := filepath.Join(ws.dataPath, w.PartOf().JobFolder, w.PartOf().Name+fmt.Sprint(w.PartOf().Id), strconv.Itoa(w.Index()))
+	folder := filepath.Join(ws.dataPath, j.JobFolder, j.Name+fmt.Sprint(j.Id), strconv.FormatInt(w.PartID, 10))
 	err := os.MkdirAll(folder, os.ModeDir|os.ModePerm)
 	if err != nil {
 		ws.Log.Println(err)
@@ -219,7 +225,7 @@ func (wss *workServerStats) Connected() {
 	atomic.AddInt32(&wss.Connects, 1)
 }
 
-func (wss *workServerStats) Disconnected(info *Hyades.ClientInfo) {
+func (wss *workServerStats) Disconnected(info *databaseDefinition.ClientInfo) {
 	atomic.AddInt32(&wss.Disconnects, 1)
 	if info != nil {
 		wss.Lock()
@@ -241,14 +247,14 @@ func (wss *workServerStats) JobError() {
 	atomic.AddInt32(&wss.JobErrorCount, 1)
 }
 
-func (wss *workServerStats) DonePart(info *Hyades.ClientInfo) {
+func (wss *workServerStats) DonePart(info *databaseDefinition.ClientInfo) {
 	atomic.AddInt32(&wss.PartsDone, 1)
 	wss.RLock()
 	defer wss.RUnlock()
 	//atomic.AddInt32(&wss.ConnectedClient[info.ComputerName+":"+info.OperatingSystem].PartsDone, 1)
 }
 
-func (wss *workServerStats) Announced(info *Hyades.ClientInfo) {
+func (wss *workServerStats) Announced(info *databaseDefinition.ClientInfo) {
 	wss.Lock()
 	defer wss.Unlock()
 	wss.ConnectedClient[info.ComputerName+":"+info.OperatingSystem] = &clientStats{

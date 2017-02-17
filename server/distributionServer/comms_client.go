@@ -4,18 +4,22 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"time"
 
-	"bitbucket.org/Neoin/logicsocket"
 	"github.com/HeinOldewage/Hyades"
+	"github.com/HeinOldewage/logicsocket"
+
+	"github.com/HeinOldewage/Hyades/server/databaseDefinition"
 )
 
 type Client struct {
 	Connected          bool
-	Work               *Hyades.Work
-	ClientInfo         *Hyades.ClientInfo
+	Work               *databaseDefinition.Work
+	ClientInfo         *databaseDefinition.ClientInfo
 	RecievedClientInfo bool
 
 	Log   *log.Logger
@@ -28,7 +32,7 @@ const (
 )
 
 func NewClient(ws *WorkServer) *Client {
-	return &Client{Connected: true, ClientInfo: Hyades.NewClientInfo(), Work: nil, Log: ws.Log, Owner: ws}
+	return &Client{Connected: true, ClientInfo: &databaseDefinition.ClientInfo{}, Work: nil, Log: ws.Log, Owner: ws}
 }
 
 func (c *Client) handle(conn net.Conn, ws *WorkServer) {
@@ -36,7 +40,7 @@ func (c *Client) handle(conn net.Conn, ws *WorkServer) {
 
 	reader := gob.NewDecoder(conn)
 
-	c.ClientInfo = new(Hyades.ClientInfo)
+	c.ClientInfo = new(databaseDefinition.ClientInfo)
 	err := reader.Decode(c.ClientInfo)
 	if err != nil {
 		c.FrameWorkError(err)
@@ -86,18 +90,19 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 	}()
 
 	for {
-		work, err := c.Owner.getWork()
+		job, work, err := c.Owner.getWork()
 		if err != nil {
 			log.Println(err)
 			continue
 		}
-		log.Println("got work from job", work.PartOf().Id)
+		log.Println("got work from job", work.PartOfID, "with id", work.PartID)
 		c.Work = work
 
-		work.SetStatus("Sending work to client " + c.ClientInfo.ComputerName)
-		work.Dispatch(c.ClientInfo)
+		work.Status = "Sending work to client " + c.ClientInfo.ComputerName
+		work.CurrentClient = c.ClientInfo
+		c.Owner.db.SaveWork(work)
 
-		comms, err := work.PartOf().CreateWorkComms(work)
+		comms, err := CreateWorkComms(job, work)
 		if err != nil {
 			log.Println("ServiceWork writer.Encode(comms) error", err)
 			c.FrameWorkError(err)
@@ -110,12 +115,18 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 			return
 		}
 
-		work.SetStatus("Awaiting response from client " + c.ClientInfo.ComputerName)
+		work.Status = "Awaiting response from client " + c.ClientInfo.ComputerName
+		c.Owner.db.SaveWork(work)
 
 		var res *Hyades.WorkResult = new(Hyades.WorkResult)
 		err = reader.Decode(res)
 		if err != nil {
+			log.Println(res)
 			log.Println("ServiceWork reader.Decode(res) error", err)
+			n, err := io.CopyN(os.Stdout, wr, 1000)
+			fmt.Println()
+			log.Println(n, err)
+
 			c.FrameWorkError(err)
 			return
 		}
@@ -124,10 +135,14 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		c.clearWork()
 
 		if res != nil && res.Error == "" {
-			c.Owner.doneWork(work, res)
+			c.Owner.doneWork(job, work, res)
 			c.Owner.Stats.DonePart(c.ClientInfo)
+			c.Owner.db.JobDone(job.Id)
 		} else {
 			c.Owner.retryWork(work, res.Error)
+			n, err := io.CopyN(ioutil.Discard, res.GetEnv(), int64(res.EnvLength)) // Discard the env
+			log.Println("Got N", n, res.EnvLength, err)
+
 			log.Println("ServiceWork ErrOutStream", res.ErrOutStream)
 			log.Println("ServiceWork StdOutStream", res.StdOutStream)
 			c.Owner.Log.Println("Client ", c.ClientInfo.ComputerName, "(", c.ClientInfo.OperatingSystem, ") terminated simulation with error:", res.Error)
@@ -138,7 +153,7 @@ func (c *Client) ServiceWork(wr io.ReadWriter) {
 		if err != nil {
 			log.Println("Saving work failed", err)
 		} else {
-			log.Println("Saved work", work.PartOf().Name, work.Command, work.Parameters)
+			log.Println("Saved work", job.Name, work.Command, work.Parameters)
 		}
 	}
 }
@@ -164,8 +179,25 @@ func (c *Client) FrameWorkError(err error) {
 	c.Owner.Stats.FrameWorkError()
 }
 
-func (c *Client) clearWork() *Hyades.Work {
+func (c *Client) clearWork() *databaseDefinition.Work {
 	work := c.Work
 	c.Work = nil
 	return work
+}
+
+func CreateWorkComms(j *databaseDefinition.Job, w *databaseDefinition.Work) (*Hyades.WorkComms, error) {
+
+	res := Hyades.WorkComms{}
+	file, err := os.Open(j.Env)
+	if err != nil {
+		return nil, err
+	}
+	res.Env, err = ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	res.ReturnEnv = j.ReturnEnv
+	res.Parts.Command = w.Command
+	res.Parts.Parameters = w.Parameters
+	return &res, nil
 }
