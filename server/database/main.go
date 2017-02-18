@@ -71,11 +71,11 @@ func (s *server) GetNextJob(context.Context, *google_protobuf.Empty) (*databaseD
 				if found {
 					return nil
 				}
-				fmt.Println("jsb string(jobKey)", string(jobKey))
+
 				jb := jsb.Bucket(jobKey)
 
 				wb := jb.Bucket([]byte("Parts"))
-				log.Println("wb", wb)
+
 				if wb == nil {
 					return nil
 				}
@@ -91,7 +91,6 @@ func (s *server) GetNextJob(context.Context, *google_protobuf.Empty) (*databaseD
 					}
 					if !work.Dispatched && !work.Done {
 						found = true
-						fmt.Println("Found a Job to do")
 						work.Dispatched = true
 						err := SaveToBucket(wb, partKey, work)
 						if err != nil {
@@ -149,7 +148,6 @@ func (s *server) AddWorks(stream databaseDefinition.DataBase_AddWorksServer) err
 				if jsb == nil {
 					return errors.New("No jobs")
 				}
-				fmt.Println("Saving work that is part of", work.GetPartOfID(), itob(work.GetPartOfID()))
 				jb := jsb.Bucket(itob(work.GetPartOfID()))
 				if jb == nil {
 					log.Println("Job that we want to add work to does not exist AddWorks", work.GetPartOfID())
@@ -251,14 +249,13 @@ func (s *server) AddJob(cntx context.Context, job *databaseDefinition.Job) (*dat
 }
 
 func (s *server) DeleteJob(cntx context.Context, id *databaseDefinition.ID) (*google_protobuf.Empty, error) {
-	log.Println("Deleteing job", id, id.GetID())
 	return &google_protobuf.Empty{}, s.db.Batch(func(tx *bolt.Tx) error {
 		jsb, err := tx.CreateBucketIfNotExists([]byte("jobs"))
 		if err != nil {
 			log.Println("tx.CreateBucketIfNotExists", err)
 			return err
 		}
-		log.Println("id.GetID()", itob(id.GetID()), id.GetID())
+
 		err = jsb.DeleteBucket(itob(id.GetID()))
 		if err != nil {
 			log.Println("jsb.Delete", err)
@@ -277,16 +274,14 @@ func (s *server) GetAll(userid *databaseDefinition.ID, stream databaseDefinition
 		}
 
 		return jsb.ForEach(func(k, v []byte) error {
-			log.Println("Looking at job", string(k), k)
 			jb := jsb.Bucket(k)
-			log.Println(jb)
 			val := bytes.NewBuffer(jb.Get([]byte("OwnerID")))
 			var ownerID int64
 			err := gob.NewDecoder(val).Decode(&ownerID)
 			if err != nil {
 				return err
 			}
-			log.Println("Looking at ownerID", ownerID, userid.GetID())
+
 			if ownerID == userid.GetID() {
 				job := &databaseDefinition.Job{}
 				err := LoadFromBucket(jsb, k, job)
@@ -295,7 +290,7 @@ func (s *server) GetAll(userid *databaseDefinition.ID, stream databaseDefinition
 					return err
 				}
 				err = stream.Send(job)
-				log.Println("Sent Job")
+
 				if err != nil {
 					return err
 				}
@@ -360,7 +355,7 @@ func (s *server) SaveWork(cntx context.Context, work *databaseDefinition.Work) (
 		if jsb == nil {
 			return errors.New("No jobs")
 		}
-		fmt.Println("Saving work that is part of", work.GetPartOfID(), itob(work.GetPartOfID()))
+
 		jb := jsb.Bucket(itob(work.GetPartOfID()))
 		workBucket := jb.Bucket([]byte("Parts"))
 
@@ -379,7 +374,7 @@ func SaveToBucket(b *bolt.Bucket, key []byte, value interface{}) error {
 		}
 
 		val = reflect.Indirect(val)
-		fmt.Println(val)
+
 		typ = val.Type()
 	}
 
