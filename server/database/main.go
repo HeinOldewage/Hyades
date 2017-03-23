@@ -363,6 +363,35 @@ func (s *server) SaveWork(cntx context.Context, work *databaseDefinition.Work) (
 	})
 }
 
+func (s *server) ResetStatus(context.Context, *google_protobuf.Empty) (*google_protobuf.Empty, error) {
+	return &google_protobuf.Empty{}, s.db.Batch(func(tx *bolt.Tx) error {
+		jsb := tx.Bucket([]byte("jobs"))
+		if jsb == nil {
+			return errors.New("No jobs")
+		}
+
+		return jsb.ForEach(func(jobKey, v []byte) error {
+			jb := jsb.Bucket(jobKey)
+
+			wb := jb.Bucket([]byte("Parts"))
+
+			if wb == nil {
+				return nil
+			}
+			return wb.ForEach(func(partKey, v []byte) error {
+
+				buf := &bytes.Buffer{}
+				err := gob.NewEncoder(buf).Encode(false)
+				if err != nil {
+					return err
+				}
+				part := wb.Bucket(partKey)
+				return part.Put([]byte("Dispatched"), buf.Bytes())
+			})
+		})
+	})
+}
+
 func SaveToBucket(b *bolt.Bucket, key []byte, value interface{}) error {
 	val := reflect.ValueOf(value)
 	typ := reflect.TypeOf(value)

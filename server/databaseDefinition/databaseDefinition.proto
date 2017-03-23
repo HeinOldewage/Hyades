@@ -17,6 +17,8 @@ service DataBase {
 	
 	rpc SaveWork(Work) returns (google.protobuf.Empty)	;
 	rpc GetPart(JobWorkIdent)	returns(Work);
+
+	rpc ResetStatus(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
 message Job {
   	int64  OwnerID = 1     ;

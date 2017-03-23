@@ -58,7 +58,7 @@ func (db *DB) JobDone(id int64) error {
 }
 
 func (db *DB) init() {
-
+	db.c.ResetStatus(context.Background(), &google_protobuf.Empty{})
 }
 
 /*
