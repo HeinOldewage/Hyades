@@ -364,6 +364,8 @@ func (s *server) SaveWork(cntx context.Context, work *databaseDefinition.Work) (
 }
 
 func (s *server) ResetStatus(context.Context, *google_protobuf.Empty) (*google_protobuf.Empty, error) {
+	log.Println("Resetting status on all jobs")
+	defer log.Println("Done Resetting status on all jobs")
 	return &google_protobuf.Empty{}, s.db.Batch(func(tx *bolt.Tx) error {
 		jsb := tx.Bucket([]byte("jobs"))
 		if jsb == nil {
@@ -386,6 +388,7 @@ func (s *server) ResetStatus(context.Context, *google_protobuf.Empty) (*google_p
 					return err
 				}
 				part := wb.Bucket(partKey)
+
 				return part.Put([]byte("Dispatched"), buf.Bytes())
 			})
 		})
