@@ -60,7 +60,6 @@ type Work struct {
 	CurrentClient *ClientInfo
 	Done          bool
 	Dispatched    bool
-	BeingHandled  bool
 	FailCount     int
 	Error         string
 	Status        string
@@ -106,7 +105,6 @@ func (w *Work) Failed() {
 	w.FailCount++
 	w.CurrentClient = nil
 	w.Dispatched = false
-	w.BeingHandled = false
 	w.Save()
 }
 
@@ -115,7 +113,6 @@ func (w *Work) Succeeded() error {
 	w.TotalTimeDispatched = w.TotalTimeDispatched + (w.FinishTime.Sub(w.DispatchTime))
 	w.Done = true
 	w.Dispatched = false
-	w.BeingHandled = false
 	w.CompletedBy = w.CurrentClient
 	w.CurrentClient = nil
 	return w.Save()

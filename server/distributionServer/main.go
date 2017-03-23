@@ -149,6 +149,7 @@ func (ws *WorkServer) getWork() (*databaseDefinition.Job, *databaseDefinition.Wo
 
 func (ws *WorkServer) retryWork(work *databaseDefinition.Work, err string) {
 	work.FailCount++
+	work.Dispatched = false
 	work.Status = "In Queue after error " + err
 	ws.db.SaveWork(work)
 }

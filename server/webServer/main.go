@@ -757,7 +757,7 @@ func (ss *SubmitServer) loginUser(w http.ResponseWriter, req *http.Request) {
 		session.Values["sessID"] = u.Username
 		// Create a session.
 
-		log.Println("!!New session!!")
+		log.Println("!!New session!!", u.Username)
 	} else {
 		log.Println("!!Invalid username/password on login!!")
 		http.Error(w, "Not a valid username or password", http.StatusUnauthorized)
