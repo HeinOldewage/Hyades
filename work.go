@@ -16,9 +16,9 @@ import (
  All work is linked to a Job
 */
 type Job struct {
-	OwnerID int64   `bson :"omitempty"`
+	OwnerID int64   `bson:"omitempty"`
 	Id      int64   `json:"id" bson:"_id,omitempty"`
-	Parts   []*Work `bson :"omitempty"`
+	Parts   []*Work `bson:"omitempty"`
 
 	NumParts     int64
 	NumPartsDone int64
@@ -28,8 +28,8 @@ type Job struct {
 	Name string
 
 	//Path to env file
-	Env       string `bson :"omitempty"`
-	ReturnEnv bool   `bson :"omitempty"`
+	Env       string `bson:"omitempty"`
+	ReturnEnv bool   `bson:"omitempty"`
 }
 
 func (j *Job) AddWork(w *Work) {
